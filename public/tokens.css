@@ -1,0 +1,105 @@
+/* Ops design tokens — ux-spec §4. All colors/space/type referenced ONLY via these vars. */
+
+:root {
+  /* type */
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+
+  /* 4px spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* severity palette: 0 info · 1 low · 2 medium · 3 high · 4 critical */
+  --sev-0: #8b8b8b;
+  --sev-1: #4a90d9;
+  --sev-2: #d9b024;
+  --sev-3: #e07a2e;
+  --sev-4: #d94a4a;
+
+  /* surfaces */
+  --bg: #fafafa;
+  --bg-raised: #ffffff;
+  --fg: #1a1a1a;
+  --fg-muted: #6b6b6b;
+  --border: #e0e0e0;
+  --accent: #2563b0;
+  --warn-bg: #fdf6e3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131316;
+    --bg-raised: #1c1c21;
+    --fg: #e8e8ea;
+    --fg-muted: #909096;
+    --border: #2c2c33;
+    --accent: #6aa5e8;
+    --warn-bg: #2a2410;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.num, td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+nav.top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-size: var(--text-sm);
+}
+nav.top .brand { font-weight: 600; color: var(--fg); }
+nav.top a { color: var(--fg-muted); }
+nav.top a.active { color: var(--fg); }
+nav.top .freshness { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg-muted); }
+
+main { padding: var(--space-4); max-width: 1200px; margin: 0 auto; }
+
+.empty-state {
+  margin-top: var(--space-8);
+  padding: var(--space-6);
+  border: 1px dashed var(--border);
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+.empty-state ol { margin: var(--space-2) 0 0; padding-left: var(--space-6); }
+.empty-state li { margin-top: var(--space-1); }
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sev-0);
+}
+.dot[data-sev="1"] { background: var(--sev-1); }
+.dot[data-sev="2"] { background: var(--sev-2); }
+.dot[data-sev="3"] { background: var(--sev-3); }
+.dot[data-sev="4"] { background: var(--sev-4); }
+
+/* mobile: read-only glance — ux-spec §4 */
+@media (max-width: 640px) {
+  main { padding: var(--space-2); }
+}
