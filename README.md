@@ -34,3 +34,30 @@ wrangler deploy
 ```
 
 Put Cloudflare Access in front of the Worker; there is no app-level auth.
+The one exception is `POST /ingest`, which uses its own bearer token so CI can
+push through Access service-token rules or a bypass policy for that path.
+
+## Pushing CI signals
+
+Set `INGEST_TOKEN` (`wrangler secret put INGEST_TOKEN`), then as the final CI
+step:
+
+```sh
+curl -X POST "$OPS_URL/ingest" \
+  -H "Authorization: Bearer $OPS_INGEST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "entities": [{ "id": "repo:me/site", "kind": "repo", "name": "site", "category": "static_site" }],
+    "signals": [{
+      "entityId": "repo:me/site",
+      "metric": "lhci.performance",
+      "valueNum": 97,
+      "observedAt": '"$(date +%s)"',
+      "url": "'"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"'",
+      "dedupeKey": "'"$GITHUB_RUN_ID"'"
+    }]
+  }'
+```
+
+Metrics must be namespaced (`domain.name`); new domains (e.g. `seo.*`) appear
+on `/findings` with zero code changes — filter with `?domain=seo`.

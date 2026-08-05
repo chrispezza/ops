@@ -173,6 +173,44 @@ export async function usageSums(db: D1Database, metric: string, since: number): 
   return new Map(res.results.map((r) => [r.entity_id, r.total]));
 }
 
+export interface FindingRow extends SignalRow {
+  entity_name: string;
+  entity_category: string | null;
+}
+
+// The cross-cutting audit lens (spec §4.4): latest signals across every entity
+// with severity >= min, plus all audit.* and hygiene.* hits regardless of
+// severity. A filter, not a domain — new audit sources appear with no changes.
+export async function findings(
+  db: D1Database,
+  opts: { minSeverity: number; domain?: string; category?: string },
+): Promise<FindingRow[]> {
+  const conditions = ["(s.severity >= ?1 OR s.metric LIKE 'audit.%' OR (s.metric LIKE 'hygiene.%' AND s.severity > 0))"];
+  const params: (string | number)[] = [opts.minSeverity];
+  if (opts.domain) {
+    params.push(`${opts.domain}.%`);
+    conditions.push(`s.metric LIKE ?${params.length}`);
+  }
+  if (opts.category) {
+    params.push(opts.category);
+    conditions.push(`e.category = ?${params.length}`);
+  }
+  const res = await db
+    .prepare(
+      `SELECT s.*, e.name AS entity_name, e.category AS entity_category
+       FROM (
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id, metric ORDER BY observed_at DESC, id DESC) AS rn
+         FROM signals
+       ) s
+       JOIN entities e ON e.id = s.entity_id
+       WHERE s.rn = 1 AND e.archived = 0 AND ${conditions.join(" AND ")}
+       ORDER BY s.severity DESC, s.observed_at DESC`,
+    )
+    .bind(...params)
+    .all<FindingRow>();
+  return res.results;
+}
+
 // Daily spend sums per entity over a window — feeds /spend rows and sparklines.
 export async function spendByEntity(
   db: D1Database,

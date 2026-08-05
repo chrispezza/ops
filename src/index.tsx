@@ -3,6 +3,7 @@ import { EXPECTED_METRICS, TRIAGE_WEIGHTS, type TriageWeights } from "./config";
 import { type BudgetRow, detectSpendAnomalies, emitHygieneSignals, evaluateBudgets } from "./core/derive";
 import {
   entitiesWithLatest,
+  findings,
   getEntity,
   getSetting,
   intervalSums,
@@ -16,7 +17,9 @@ import {
 } from "./core/queries";
 import { runPollers } from "./core/runner";
 import { computeScore, hasUsageSemantics } from "./core/score";
+import { handleIngest } from "./ingest";
 import { FreshnessChip, Layout } from "./ui/layout";
+import { FindingsPage } from "./ui/pages/findings";
 import { EntityPage, HistoryRows } from "./ui/pages/entity";
 import { HealthPage } from "./ui/pages/health";
 import { MapPage } from "./ui/pages/map";
@@ -125,6 +128,24 @@ app.post("/archive", async (c) => {
   if (id) await setArchived(c.env.DB, id, archived);
   return c.redirect(`/e/${id}`);
 });
+
+app.get("/findings", async (c) => {
+  const now = epochNow();
+  const filters = {
+    minSeverity: Number(c.req.query("min_severity") ?? 2), // ux §2.4 default
+    domain: c.req.query("domain") || undefined,
+    category: c.req.query("category") || undefined,
+    group: c.req.query("group") || undefined,
+  };
+  const [rows, health] = await Promise.all([findings(c.env.DB, filters), pollerHealth(c.env.DB)]);
+  return c.html(
+    <Layout path="/findings" title="Findings" health={health} now={now}>
+      <FindingsPage rows={rows} filters={filters} now={now} />
+    </Layout>,
+  );
+});
+
+app.post("/ingest", handleIngest);
 
 app.get("/spend", async (c) => {
   const now = epochNow();
