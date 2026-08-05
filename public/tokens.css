@@ -191,6 +191,19 @@ ul.breakdown { margin: var(--space-1) 0 0; padding-left: var(--space-4); font-si
 .entity-head h1 { font-size: var(--text-lg); margin: 0 0 var(--space-1); }
 .entity-head form button { margin-top: var(--space-2); }
 
+.mtd { font-size: var(--text-lg); margin: 0 0 var(--space-2); }
+svg.spark .spark-bar { fill: var(--accent); }
+svg.spark .spark-bar.today { fill: none; stroke: var(--accent); stroke-width: 1; } /* provisional day */
+.budget { margin-bottom: var(--space-2); font-size: var(--text-sm); }
+.budget-label { display: block; margin-bottom: var(--space-1); }
+.budget-bar { position: relative; height: 10px; background: var(--bg-raised); border: 1px solid var(--border); max-width: 480px; }
+.budget-fill { height: 100%; background: var(--accent); }
+.budget-fill[data-sev="2"] { background: var(--sev-2); }
+.budget-fill[data-sev="4"] { background: var(--sev-4); }
+.budget-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; }
+.budget-tick.soft { background: var(--sev-2); }
+.budget-tick.hard { background: var(--sev-4); }
+
 /* mobile: read-only glance — ux-spec §4 */
 @media (max-width: 640px) {
   main { padding: var(--space-2); }

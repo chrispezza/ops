@@ -1,4 +1,4 @@
-import { TRIAGE_WEIGHTS } from "../config";
+import { TRIAGE_WEIGHTS, type TriageWeights } from "../config";
 import type { EntityView, SignalRow } from "./queries";
 
 export interface ScorePart {
@@ -15,8 +15,13 @@ const SEV_WORDS = ["info", "low", "medium", "high", "critical"] as const;
 
 // Spec §4.1. usage30d is the summed usage.invocations over 30d, or null when
 // the entity's kind has no usage semantics at all.
-export function computeScore(view: EntityView, now: number, usage30d: number | null): Score {
-  const w = TRIAGE_WEIGHTS;
+export function computeScore(
+  view: EntityView,
+  now: number,
+  usage30d: number | null,
+  weights: TriageWeights = TRIAGE_WEIGHTS,
+): Score {
+  const w = weights;
   const parts: ScorePart[] = [];
   const latest = Object.values(view.latest);
 

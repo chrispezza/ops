@@ -173,6 +173,50 @@ export async function usageSums(db: D1Database, metric: string, since: number): 
   return new Map(res.results.map((r) => [r.entity_id, r.total]));
 }
 
+// Daily spend sums per entity over a window — feeds /spend rows and sparklines.
+export async function spendByEntity(
+  db: D1Database,
+  since: number,
+): Promise<Map<string, { name: string; points: { period_start: number; total: number }[] }>> {
+  const res = await db
+    .prepare(
+      `SELECT s.entity_id, e.name, s.period_start, SUM(s.value_num) AS total
+       FROM signals s JOIN entities e ON e.id = s.entity_id
+       WHERE s.metric = 'spend.usd' AND s.period_start >= ?1
+       GROUP BY s.entity_id, s.period_start
+       ORDER BY s.entity_id, s.period_start`,
+    )
+    .bind(since)
+    .all<{ entity_id: string; name: string; period_start: number; total: number }>();
+  const map = new Map<string, { name: string; points: { period_start: number; total: number }[] }>();
+  for (const row of res.results) {
+    let entry = map.get(row.entity_id);
+    if (!entry) {
+      entry = { name: row.name, points: [] };
+      map.set(row.entity_id, entry);
+    }
+    entry.points.push({ period_start: row.period_start, total: row.total });
+  }
+  return map;
+}
+
+export async function getSetting<T>(db: D1Database, key: string): Promise<T | null> {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = ?1").bind(key).first<{ value: string }>();
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function putSetting(db: D1Database, key: string, value: unknown): Promise<void> {
+  await db
+    .prepare("INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .bind(key, JSON.stringify(value))
+    .run();
+}
+
 export async function setArchived(db: D1Database, id: string, archived: boolean): Promise<void> {
   await db.prepare("UPDATE entities SET archived = ?2 WHERE id = ?1").bind(id, archived ? 1 : 0).run();
 }

@@ -1,14 +1,17 @@
 import { Hono } from "hono";
-import { EXPECTED_METRICS } from "./config";
-import { emitHygieneSignals } from "./core/derive";
+import { EXPECTED_METRICS, TRIAGE_WEIGHTS, type TriageWeights } from "./config";
+import { type BudgetRow, detectSpendAnomalies, emitHygieneSignals, evaluateBudgets } from "./core/derive";
 import {
   entitiesWithLatest,
   getEntity,
+  getSetting,
   intervalSums,
   latestSignals,
   pollerHealth,
+  putSetting,
   setArchived,
   signalHistory,
+  spendByEntity,
   usageSums,
 } from "./core/queries";
 import { runPollers } from "./core/runner";
@@ -17,6 +20,8 @@ import { FreshnessChip, Layout } from "./ui/layout";
 import { EntityPage, HistoryRows } from "./ui/pages/entity";
 import { HealthPage } from "./ui/pages/health";
 import { MapPage } from "./ui/pages/map";
+import { SettingsPage } from "./ui/pages/settings";
+import { type SpendEntity, SpendPage } from "./ui/pages/spend";
 import { TriagePage, type TriageRow } from "./ui/pages/triage";
 
 // Spec §5: hourly cron runs hourly pollers, daily cron (~06:00 ET) runs daily.
@@ -28,14 +33,22 @@ const app = new Hono<{ Bindings: Env }>();
 const epochNow = () => Math.floor(Date.now() / 1000);
 
 async function scoredViews(db: D1Database, now: number): Promise<TriageRow[]> {
-  const [views, usage] = await Promise.all([
+  const [views, usage, weights] = await Promise.all([
     entitiesWithLatest(db),
     usageSums(db, "usage.invocations", now - 30 * DAY),
+    getSetting<TriageWeights>(db, "triage_weights"),
   ]);
   return views.map((view) => ({
     view,
-    score: computeScore(view, now, hasUsageSemantics(view) ? (usage.get(view.id) ?? 0) : null),
+    score: computeScore(view, now, hasUsageSemantics(view) ? (usage.get(view.id) ?? 0) : null, weights ?? TRIAGE_WEIGHTS),
   }));
+}
+
+// Spec §3: derived signals run after every poll cycle.
+async function derivePass(env: Env, now: number): Promise<void> {
+  await emitHygieneSignals(env.DB, EXPECTED_METRICS, now);
+  await evaluateBudgets(env.DB, now);
+  await detectSpendAnomalies(env.DB, now);
 }
 
 app.get("/", async (c) => {
@@ -113,6 +126,99 @@ app.post("/archive", async (c) => {
   return c.redirect(`/e/${id}`);
 });
 
+app.get("/spend", async (c) => {
+  const now = epochNow();
+  const windowDays = Number(c.req.query("window") ?? 30);
+  const monthStart = Math.floor(
+    Date.UTC(new Date(now * 1000).getUTCFullYear(), new Date(now * 1000).getUTCMonth(), 1) / 1000,
+  );
+  const today = now - (now % DAY);
+  const since = Math.min(today - (windowDays - 1) * DAY, monthStart);
+
+  const [spend, budgets, health] = await Promise.all([
+    spendByEntity(c.env.DB, since),
+    c.env.DB.prepare("SELECT * FROM budgets").all<BudgetRow>().then((r) => r.results),
+    pollerHealth(c.env.DB),
+  ]);
+
+  const entities: SpendEntity[] = await Promise.all(
+    [...spend.entries()].map(async ([id, e]) => ({
+      id,
+      name: e.name,
+      points: e.points,
+      mtd: e.points.filter((p) => p.period_start >= monthStart).reduce((s, p) => s + p.total, 0),
+      today: e.points.find((p) => p.period_start === today)?.total ?? 0,
+      anomaly: (await latestSignals(c.env.DB, id)).find((s) => s.metric === "spend.anomaly"),
+    })),
+  );
+  entities.sort((a, b) => b.mtd - a.mtd);
+  const orgMtd = entities.reduce((s, e) => s + e.mtd, 0);
+
+  return c.html(
+    <Layout path="/spend" title="Spend" health={health} now={now}>
+      <SpendPage entities={entities} budgets={budgets} orgMtd={orgMtd} windowDays={windowDays} now={now} />
+    </Layout>,
+  );
+});
+
+app.get("/settings", async (c) => {
+  const now = epochNow();
+  const [budgets, weights, health] = await Promise.all([
+    c.env.DB.prepare("SELECT * FROM budgets").all<BudgetRow>().then((r) => r.results),
+    getSetting<TriageWeights>(c.env.DB, "triage_weights"),
+    pollerHealth(c.env.DB),
+  ]);
+  return c.html(
+    <Layout path="/settings" title="Settings" health={health} now={now}>
+      <SettingsPage budgets={budgets} weights={weights ?? TRIAGE_WEIGHTS} />
+    </Layout>,
+  );
+});
+
+app.post("/settings/budgets", async (c) => {
+  const form = await c.req.formData();
+  const scope = String(form.get("scope") ?? "").trim();
+  const period = form.get("period") === "day" ? "day" : "month";
+  const soft = Number(form.get("soft_limit"));
+  const hard = Number(form.get("hard_limit"));
+  if (scope && Number.isFinite(soft) && Number.isFinite(hard) && soft >= 0 && hard >= soft) {
+    await c.env.DB.prepare(
+      "INSERT INTO budgets (scope, metric, period, soft_limit, hard_limit) VALUES (?1, 'spend.usd', ?2, ?3, ?4)",
+    )
+      .bind(scope, period, soft, hard)
+      .run();
+    await evaluateBudgets(c.env.DB, epochNow());
+  }
+  return c.redirect("/settings");
+});
+
+app.post("/settings/budgets/delete", async (c) => {
+  const form = await c.req.formData();
+  const id = Number(form.get("id"));
+  if (Number.isFinite(id)) await c.env.DB.prepare("DELETE FROM budgets WHERE id = ?1").bind(id).run();
+  return c.redirect("/settings");
+});
+
+app.post("/settings/weights", async (c) => {
+  const form = await c.req.formData();
+  const num = (name: string, fallback: number) => {
+    const v = Number(form.get(name));
+    return Number.isFinite(v) && v >= 0 ? v : fallback;
+  };
+  const d = TRIAGE_WEIGHTS;
+  const weights: TriageWeights = {
+    severityFactor: num("severity_factor", d.severityFactor),
+    breadthFactor: num("breadth_factor", d.breadthFactor),
+    staleness: [
+      { minDays: 90, points: num("staleness_90", 6) },
+      { minDays: 30, points: num("staleness_30", 3) },
+    ],
+    zeroUsageBonus: num("zero_usage_bonus", d.zeroUsageBonus),
+  };
+  await putSetting(c.env.DB, "triage_weights", weights);
+  return c.redirect("/settings");
+});
+
 app.get("/health", async (c) => {
   const now = epochNow();
   const health = await pollerHealth(c.env.DB);
@@ -127,7 +233,7 @@ app.post("/health/run", async (c) => {
   const now = epochNow();
   await runPollers(c.env, "hourly", { now });
   await runPollers(c.env, "daily", { now });
-  await emitHygieneSignals(c.env.DB, EXPECTED_METRICS, now);
+  await derivePass(c.env, now);
   return c.redirect("/health");
 });
 
@@ -142,6 +248,6 @@ export default {
   async scheduled(event, env, _ctx) {
     const now = epochNow();
     await runPollers(env, event.cron === DAILY_CRON ? "daily" : "hourly", { now });
-    await emitHygieneSignals(env.DB, EXPECTED_METRICS, now);
+    await derivePass(env, now);
   },
 } satisfies ExportedHandler<Env>;
