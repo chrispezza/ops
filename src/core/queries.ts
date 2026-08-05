@@ -30,6 +30,104 @@ export async function latestSignals(db: D1Database, entityId: string): Promise<S
   return res.results;
 }
 
+export interface EntityView {
+  id: string;
+  kind: string;
+  category: string | null;
+  name: string;
+  owner: string | null;
+  source_url: string | null;
+  last_seen_at: number;
+  latest: Record<string, SignalRow>;
+  maxSeverity: number;
+}
+
+// Every non-poller entity with its latest signal per metric — the map query.
+export async function entitiesWithLatest(db: D1Database): Promise<EntityView[]> {
+  const res = await db
+    .prepare(
+      `SELECT e.id, e.kind, e.category, e.name, e.owner, e.source_url, e.last_seen_at,
+              s.id AS sig_id, s.source, s.metric, s.value_num, s.value_text, s.severity,
+              s.url, s.observed_at, s.period_start, s.period_end, s.dedupe_key
+       FROM entities e
+       LEFT JOIN (
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id, metric ORDER BY observed_at DESC, id DESC) AS rn
+         FROM signals
+       ) s ON s.entity_id = e.id AND s.rn = 1
+       WHERE e.archived = 0 AND e.kind != 'poller'
+       ORDER BY e.name`,
+    )
+    .all<Record<string, unknown>>();
+
+  const byId = new Map<string, EntityView>();
+  for (const row of res.results) {
+    const id = row.id as string;
+    let view = byId.get(id);
+    if (!view) {
+      view = {
+        id,
+        kind: row.kind as string,
+        category: row.category as string | null,
+        name: row.name as string,
+        owner: row.owner as string | null,
+        source_url: row.source_url as string | null,
+        last_seen_at: row.last_seen_at as number,
+        latest: {},
+        maxSeverity: 0,
+      };
+      byId.set(id, view);
+    }
+    if (row.metric != null) {
+      const sig: SignalRow = {
+        id: row.sig_id as number,
+        entity_id: id,
+        source: row.source as string,
+        metric: row.metric as string,
+        value_num: row.value_num as number | null,
+        value_text: row.value_text as string | null,
+        severity: row.severity as number,
+        url: row.url as string | null,
+        observed_at: row.observed_at as number,
+        period_start: row.period_start as number | null,
+        period_end: row.period_end as number | null,
+        dedupe_key: row.dedupe_key as string,
+      };
+      view.latest[sig.metric] = sig;
+      if (sig.severity > view.maxSeverity) view.maxSeverity = sig.severity;
+    }
+  }
+  return [...byId.values()];
+}
+
+export interface PollerHealth {
+  entityId: string;
+  name: string;
+  lastRun: SignalRow | null;
+  lastOk: SignalRow | null;
+}
+
+// One row per poller: latest status signal + latest successful one (ux §2.6).
+export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
+  const latest = (filter: string) => `
+    SELECT * FROM (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY observed_at DESC, id DESC) AS rn
+      FROM signals WHERE metric = 'poller.status' ${filter}
+    ) WHERE rn = 1`;
+  const [entities, lastRuns, lastOks] = await Promise.all([
+    db.prepare("SELECT id, name FROM entities WHERE kind = 'poller' ORDER BY id").all<{ id: string; name: string }>(),
+    db.prepare(latest("")).all<SignalRow>(),
+    db.prepare(latest("AND severity = 0")).all<SignalRow>(),
+  ]);
+  const runById = new Map(lastRuns.results.map((s) => [s.entity_id, s]));
+  const okById = new Map(lastOks.results.map((s) => [s.entity_id, s]));
+  return entities.results.map((e) => ({
+    entityId: e.id,
+    name: e.name,
+    lastRun: runById.get(e.id) ?? null,
+    lastOk: okById.get(e.id) ?? null,
+  }));
+}
+
 export async function intervalSums(
   db: D1Database,
   entityId: string,

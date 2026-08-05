@@ -99,6 +99,71 @@ main { padding: var(--space-4); max-width: 1200px; margin: 0 auto; }
 .dot[data-sev="3"] { background: var(--sev-3); }
 .dot[data-sev="4"] { background: var(--sev-4); }
 
+.banner.amber {
+  padding: var(--space-1) var(--space-4);
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+
+section.section { margin-bottom: var(--space-6); }
+section.section h2 {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-1);
+  margin: 0 0 var(--space-2);
+}
+.rollup { margin-left: var(--space-2); font-size: var(--text-xs); }
+.rollup.sev { color: var(--sev-2); }
+.warn-text { color: var(--sev-2); text-transform: none; letter-spacing: normal; }
+.hint { color: var(--fg-muted); font-size: var(--text-sm); margin: var(--space-2) 0; }
+
+table.rows { width: 100%; border-collapse: collapse; }
+table.rows th {
+  text-align: left;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  font-weight: 500;
+  padding: var(--space-1) var(--space-2);
+}
+table.rows th.num, table.rows td.num { text-align: right; }
+tr.row td { padding: var(--space-1) var(--space-2); border-top: 1px solid var(--border); }
+tr.row:hover td { background: var(--bg-raised); }
+td.c-dot { width: 16px; }
+td.c-name a { color: var(--fg); font-weight: 500; }
+td.c-kind { color: var(--fg-muted); font-size: var(--text-xs); }
+td.c-links { text-align: right; white-space: nowrap; }
+td.c-links a { margin-left: var(--space-2); font-size: var(--text-sm); }
+td.c-chips { white-space: nowrap; }
+
+.chip {
+  display: inline-block;
+  margin-right: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+.chip[data-sev="2"] { color: var(--sev-2); }
+.chip[data-sev="3"] { color: var(--sev-3); }
+.chip[data-sev="4"] { color: var(--sev-4); }
+.chip.missing { color: var(--sev-2); opacity: 0.8; }
+
+.error-text { color: var(--sev-3); font-size: var(--text-xs); }
+
+form button {
+  margin-top: var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
 /* mobile: read-only glance — ux-spec §4 */
 @media (max-width: 640px) {
   main { padding: var(--space-2); }

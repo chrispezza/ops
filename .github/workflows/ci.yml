@@ -18,7 +18,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx wrangler types
+      - run: npx wrangler types --strict-vars=false
       - run: npm run typecheck
       - run: npm test
       - run: npx wrangler deploy --dry-run
