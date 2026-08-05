@@ -1,5 +1,11 @@
 import { Hono } from "hono";
+import { EXPECTED_METRICS } from "./config";
+import { emitHygieneSignals } from "./core/derive";
+import { runPollers } from "./core/runner";
 import { Layout } from "./ui/layout";
+
+// Spec §5: hourly cron runs hourly pollers, daily cron (~06:00 ET) runs daily.
+const DAILY_CRON = "0 10 * * *";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -32,7 +38,9 @@ function SetupChecklist() {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event, _env, _ctx) {
-    // Phase 1: fan out to pollers by schedule (spec §5)
+  async scheduled(event, env, _ctx) {
+    const now = Math.floor(Date.now() / 1000);
+    await runPollers(env, event.cron === DAILY_CRON ? "daily" : "hourly", { now });
+    await emitHygieneSignals(env.DB, EXPECTED_METRICS, now);
   },
 } satisfies ExportedHandler<Env>;
