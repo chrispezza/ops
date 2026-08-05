@@ -1,27 +1,30 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "ops",
-  "main": "src/index.tsx",
-  "compatibility_date": "2026-07-30",
-  "assets": {
-    "directory": "./public"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "ops",
-      "database_id": "placeholder-created-on-first-deploy",
-      "migrations_dir": "./migrations"
-    }
-  ],
-  "triggers": {
-    // Hourly pollers (github) + daily pollers (anthropic_usage) at ~06:00 ET (10:00 UTC)
-    "crons": ["0 * * * *", "0 10 * * *"]
-  },
-  "vars": {
-    "GITHUB_OWNERS": ""
-  },
-  "observability": {
-    "enabled": true
-  }
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "ops",
+	"main": "src/index.tsx",
+	"compatibility_date": "2026-07-30",
+	"assets": {
+		"directory": "./public"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ops",
+			"database_id": "1c9fe59c-f333-4145-b634-dcbcc8fa40ad",
+			"migrations_dir": "./migrations"
+		}
+	],
+	"triggers": {
+		// Hourly pollers (github) + daily pollers (anthropic_usage) at ~06:00 ET (10:00 UTC)
+		"crons": [
+			"0 * * * *",
+			"0 10 * * *"
+		]
+	},
+	"vars": {
+		"GITHUB_OWNERS": ""
+	},
+	"observability": {
+		"enabled": true
+	}
 }
