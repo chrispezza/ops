@@ -128,6 +128,55 @@ export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
   }));
 }
 
+export interface EntityRow {
+  id: string;
+  kind: string;
+  category: string | null;
+  name: string;
+  owner: string | null;
+  source_url: string | null;
+  metadata: string | null;
+  first_seen_at: number;
+  last_seen_at: number;
+  archived: number;
+}
+
+export async function getEntity(db: D1Database, id: string): Promise<EntityRow | null> {
+  return db.prepare("SELECT * FROM entities WHERE id = ?1").bind(id).first<EntityRow>();
+}
+
+export async function signalHistory(
+  db: D1Database,
+  entityId: string,
+  limit: number,
+  offset: number,
+): Promise<SignalRow[]> {
+  const res = await db
+    .prepare(
+      `SELECT * FROM signals WHERE entity_id = ?1
+       ORDER BY observed_at DESC, id DESC LIMIT ?2 OFFSET ?3`,
+    )
+    .bind(entityId, limit, offset)
+    .all<SignalRow>();
+  return res.results;
+}
+
+// 30d usage sums for every entity — feeds the zero-usage triage bonus.
+export async function usageSums(db: D1Database, metric: string, since: number): Promise<Map<string, number>> {
+  const res = await db
+    .prepare(
+      `SELECT entity_id, SUM(value_num) AS total FROM signals
+       WHERE metric = ?1 AND period_start >= ?2 GROUP BY entity_id`,
+    )
+    .bind(metric, since)
+    .all<{ entity_id: string; total: number }>();
+  return new Map(res.results.map((r) => [r.entity_id, r.total]));
+}
+
+export async function setArchived(db: D1Database, id: string, archived: boolean): Promise<void> {
+  await db.prepare("UPDATE entities SET archived = ?2 WHERE id = ?1").bind(id, archived ? 1 : 0).run();
+}
+
 export async function intervalSums(
   db: D1Database,
   entityId: string,

@@ -164,6 +164,33 @@ form button {
   cursor: pointer;
 }
 
+form.filters {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+}
+form.filters input, form.filters select {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+form.filters button { margin-top: 0; }
+
+td.c-why details summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+ul.breakdown { margin: var(--space-1) 0 0; padding-left: var(--space-4); font-size: var(--text-xs); }
+
+.entity-head h1 { font-size: var(--text-lg); margin: 0 0 var(--space-1); }
+.entity-head form button { margin-top: var(--space-2); }
+
 /* mobile: read-only glance — ux-spec §4 */
 @media (max-width: 640px) {
   main { padding: var(--space-2); }

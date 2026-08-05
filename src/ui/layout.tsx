@@ -45,6 +45,13 @@ export function Layout(props: {
         <title>{props.title ? `${props.title} · Ops` : "Ops"}</title>
         <link rel="stylesheet" href="/tokens.css" />
         <script src="/htmx.min.js" defer></script>
+        {/* ux §5: "/" focuses the filter box — the whole shortcut system for v1 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "document.addEventListener('keydown',function(e){if(e.key==='/'&&!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)){var i=document.querySelector('input[name=q]');if(i){e.preventDefault();i.focus()}}})",
+          }}
+        ></script>
       </head>
       <body>
         <nav class="top">

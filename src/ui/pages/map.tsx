@@ -1,5 +1,6 @@
 import type { EntityView } from "../../core/queries";
 import { Chip, Dot, newIssueUrl, timeAgo } from "../components";
+import type { TriageRow } from "./triage";
 
 const SECTIONS: { category: string; title: string }[] = [
   { category: "static_site", title: "Static Sites" },
@@ -7,52 +8,58 @@ const SECTIONS: { category: string; title: string }[] = [
   { category: "plugin_skill", title: "Plugins · MCPs · Skills" },
 ];
 
-export function MapPage(props: { entities: EntityView[]; now: number }) {
-  const { entities, now } = props;
-  if (entities.length === 0) return <SetupChecklist />;
+export function MapPage(props: { rows: TriageRow[]; q?: string; now: number }) {
+  const { rows, now } = props;
+  if (rows.length === 0 && !props.q) return <SetupChecklist />;
 
   const known = new Set(SECTIONS.map((s) => s.category));
-  const uncategorized = entities.filter((e) => !e.category || !known.has(e.category));
+  const uncategorized = rows.filter((r) => !r.view.category || !known.has(r.view.category));
 
   return (
     <>
-      {SECTIONS.map((s) => (
-        <Section
-          title={s.title}
-          entities={entities.filter((e) => e.category === s.category)}
-          now={now}
-          hint={`No ${s.title.toLowerCase()} yet — tag repos with the matching topic.`}
-        />
-      ))}
-      {uncategorized.length > 0 && (
-        <Section
-          title="Uncategorized"
-          entities={uncategorized}
-          now={now}
-          warning="tag these repos with a topic: static-site · web-app · mcp · skill"
-        />
-      )}
+      <form class="filters" hx-get="/" hx-target="#map-region" hx-select="#map-region" hx-swap="outerHTML" hx-push-url="true">
+        <input type="search" name="q" placeholder="filter… ( / )" value={props.q ?? ""} />
+        <button type="submit">apply</button>
+      </form>
+      <div id="map-region">
+        {SECTIONS.map((s) => (
+          <Section
+            title={s.title}
+            rows={rows.filter((r) => r.view.category === s.category)}
+            now={now}
+            hint={`No ${s.title.toLowerCase()} yet — tag repos with the matching topic.`}
+          />
+        ))}
+        {uncategorized.length > 0 && (
+          <Section
+            title="Uncategorized"
+            rows={uncategorized}
+            now={now}
+            warning="tag these repos with a topic: static-site · web-app · mcp · skill"
+          />
+        )}
+      </div>
     </>
   );
 }
 
-function Section(props: { title: string; entities: EntityView[]; now: number; hint?: string; warning?: string }) {
-  const { title, entities, now } = props;
-  const problems = entities.filter((e) => e.maxSeverity >= 2).length;
+function Section(props: { title: string; rows: TriageRow[]; now: number; hint?: string; warning?: string }) {
+  const { title, rows, now } = props;
+  const problems = rows.filter((r) => r.view.maxSeverity >= 2).length;
   return (
     <section class={props.warning ? "section warn" : "section"}>
       <h2>
-        {title} <span class="rollup num">{entities.length}</span>
+        {title} <span class="rollup num">{rows.length}</span>
         {problems > 0 && <span class="rollup num sev">{problems} ▲</span>}
         {props.warning && <span class="rollup warn-text">{props.warning}</span>}
       </h2>
       {/* ux §3: empty sections render with hint text, not omitted — the IA stays stable */}
-      {entities.length === 0 ? (
+      {rows.length === 0 ? (
         <p class="hint">{props.hint}</p>
       ) : (
         <table class="rows">
-          {entities.map((e) => (
-            <Row entity={e} now={now} />
+          {rows.map((r) => (
+            <Row row={r} now={now} />
           ))}
         </table>
       )}
@@ -60,8 +67,8 @@ function Section(props: { title: string; entities: EntityView[]; now: number; hi
   );
 }
 
-function Row(props: { entity: EntityView; now: number }) {
-  const { entity: e, now } = props;
+function Row(props: { row: TriageRow; now: number }) {
+  const { view: e, score } = props.row;
   return (
     <tr class="row">
       <td class="c-dot">
@@ -72,8 +79,9 @@ function Row(props: { entity: EntityView; now: number }) {
       </td>
       <td class="c-kind">{e.category ?? e.kind}</td>
       <td class="c-chips">
-        <Chips entity={e} now={now} />
+        <Chips entity={e} now={props.now} />
       </td>
+      <td class="num">{score.total > 0 ? score.total : ""}</td>
       <td class="c-links">
         {e.source_url && <a href={e.source_url}>↗</a>}
         {e.source_url && <a href={newIssueUrl(e.source_url)}>+issue</a>}

@@ -72,6 +72,46 @@ describe("map page", () => {
   });
 });
 
+describe("triage page", () => {
+  it("sorts by score and explains why", async () => {
+    await seedRepo();
+    const html = await (await SELF.fetch("https://ops.local/triage")).text();
+    // gittunes: sev3 CI (30) + 2 problems (4) = 34
+    expect(html).toContain("34");
+    expect(html).toContain("high ci.status");
+    // filter that excludes everything
+    const filtered = await (await SELF.fetch("https://ops.local/triage?min_severity=4")).text();
+    expect(filtered).toContain("Nothing matches");
+  });
+});
+
+describe("entity page", () => {
+  it("renders detail, history, and archive toggle round trip", async () => {
+    await seedRepo();
+    const res = await SELF.fetch("https://ops.local/e/repo:clownware/gittunes");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("gittunes");
+    expect(html).toContain("ci.status");
+    expect(html).toContain("History");
+
+    // archive → hidden from map, still resolvable on the entity page
+    const form = new FormData();
+    form.set("entity_id", "repo:clownware/gittunes");
+    form.set("archived", "1");
+    await SELF.fetch("https://ops.local/archive", { method: "POST", body: form, redirect: "manual" });
+    const map = await (await SELF.fetch("https://ops.local/")).text();
+    expect(map).not.toContain(">gittunes<");
+    const detail = await (await SELF.fetch("https://ops.local/e/repo:clownware/gittunes")).text();
+    expect(detail).toContain("archived");
+  });
+
+  it("404s for unknown entities", async () => {
+    const res = await SELF.fetch("https://ops.local/e/repo:nope/nope");
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("health + degradation", () => {
   it("lists poller failures and shows the amber banner on other pages", async () => {
     const bad: Poller = {
