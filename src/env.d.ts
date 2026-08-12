@@ -5,6 +5,7 @@ interface Env {
   ANTHROPIC_ADMIN_KEY?: string;
   OPENAI_ADMIN_KEY?: string;
   X_BEARER_TOKEN?: string;
+  CLOUDFLARE_API_TOKEN?: string;
   INGEST_TOKEN?: string;
   NTFY_URL?: string;
   NTFY_TOKEN?: string;
@@ -16,6 +17,7 @@ declare namespace Cloudflare {
     ANTHROPIC_ADMIN_KEY?: string;
     OPENAI_ADMIN_KEY?: string;
     X_BEARER_TOKEN?: string;
+    CLOUDFLARE_API_TOKEN?: string;
     INGEST_TOKEN?: string;
     NTFY_URL?: string;
     NTFY_TOKEN?: string;

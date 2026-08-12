@@ -47,6 +47,10 @@ export const METRIC_LABELS: Record<string, string> = {
   "hygiene.inactive": "activity",
   "manifest.description": "manifest description",
   "manifest.skill_count": "skills",
+  "cf.requests": "requests",
+  "cf.errors": "errors",
+  "cf.error_rate": "error rate",
+  "d1.size_bytes": "database size",
 };
 
 export function labelForMetric(metric: string): string {
@@ -76,6 +80,8 @@ export const DOMAIN_LABELS: Record<string, string> = {
   hygiene: "Hygiene",
   poller: "Poller",
   manifest: "Manifest",
+  cf: "Cloudflare",
+  d1: "Database",
 };
 
 // Triage score — spec §4.1. Defaults here; overridable via /settings (stored in D1).

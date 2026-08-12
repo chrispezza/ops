@@ -414,6 +414,7 @@ details.agent-prompt textarea {
 details.agent-prompt button { margin-top: var(--space-2); }
 
 details.archived-section .row td { opacity: 0.7; }
+tr.cluster-cont td { border-top-color: transparent; } /* clustered findings read as one entity block */
 
 /* mobile: read-only glance — ux-spec §4: tables collapse to definition-list rows */
 @media (max-width: 640px) {

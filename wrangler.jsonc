@@ -23,7 +23,8 @@
 	},
 	"vars": {
 		"GITHUB_OWNERS": "chrispezza,clownware",
-		"OPS_URL": "https://ops.chris-d8c.workers.dev"
+		"OPS_URL": "https://ops.chris-d8c.workers.dev",
+		"CF_ACCOUNT_ID": "d8c9e6e20235d4f8ac60c6c17d0bbc2e"
 	},
 	"observability": {
 		"enabled": true

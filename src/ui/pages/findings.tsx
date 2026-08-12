@@ -20,6 +20,14 @@ function sortHref(f: FindingsFilters, sort: string): string {
   return `/findings?${params.toString()}`;
 }
 
+// Severity bands turn the flat gradient into urgency classes: what breaks
+// things now, what needs planning, what's routine upkeep.
+const BANDS = [
+  { title: "Act now", match: (r: FindingRow) => r.severity >= 3 },
+  { title: "Plan", match: (r: FindingRow) => r.severity === 2 },
+  { title: "Routine", match: (r: FindingRow) => r.severity <= 1 },
+] as const;
+
 export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilters; now: number }) {
   const f = props.filters;
   const live = props.rows.filter((r) => !r.entity_archived);
@@ -54,7 +62,18 @@ export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilte
         ) : f.group === "entity" ? (
           <Grouped rows={live} now={props.now} />
         ) : (
-          <FindingsTable rows={live} filters={f} now={props.now} />
+          BANDS.map((band) => {
+            const rows = live.filter(band.match);
+            if (rows.length === 0) return null;
+            return (
+              <section class="section">
+                <h2>
+                  {band.title} <span class="rollup num">{rows.length}</span>
+                </h2>
+                <FindingsTable rows={clusterByEntity(rows)} filters={f} now={props.now} />
+              </section>
+            );
+          })
         )}
         {/* archived findings are history, not work — same drawer pattern as the map */}
         {archived.length > 0 && (
@@ -70,8 +89,22 @@ export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilte
   );
 }
 
+// One finding per row (each keeps its own value, timestamp, deep link), but an
+// entity's findings cluster together with the name rendered once — dedup
+// without information loss, no interaction required.
+function clusterByEntity(rows: FindingRow[]): FindingRow[] {
+  const clusters = new Map<string, FindingRow[]>();
+  for (const row of rows) {
+    const list = clusters.get(row.entity_id);
+    if (list) list.push(row);
+    else clusters.set(row.entity_id, [row]);
+  }
+  return [...clusters.values()].flat();
+}
+
 function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; now: number }) {
   const sort = props.filters?.sort ?? "severity";
+  let previousEntity = "";
   return (
     <table class="rows">
       <tr>
@@ -98,14 +131,21 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
         </th>
         <th />
       </tr>
-      {props.rows.map((r) => (
-        <tr class="row" data-href={`/e/${r.entity_id}`}>
+      {props.rows.map((r) => {
+        const firstOfCluster = r.entity_id !== previousEntity;
+        previousEntity = r.entity_id;
+        return (
+        <tr class={firstOfCluster ? "row" : "row cluster-cont"} data-href={`/e/${r.entity_id}`}>
           <td class="c-dot">
             <Dot severity={r.severity} />
           </td>
           <td class="c-name">
-            <a href={`/e/${r.entity_id}`}>{r.entity_name}</a>
-            {r.entity_archived ? <span class="c-kind"> (archived)</span> : null}
+            {firstOfCluster && (
+              <>
+                <a href={`/e/${r.entity_id}`}>{r.entity_name}</a>
+                {r.entity_archived ? <span class="c-kind"> (archived)</span> : null}
+              </>
+            )}
           </td>
           <td class="c-kind" title={r.metric}>
             {labelForMetric(r.metric)}
@@ -117,7 +157,8 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
           <td class="c-kind">{timeAgo(r.observed_at, props.now)} ago</td>
           <td class="c-links">{r.url && <a href={r.url}>↗</a>}</td>
         </tr>
-      ))}
+        );
+      })}
     </table>
   );
 }

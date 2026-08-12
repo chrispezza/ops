@@ -272,6 +272,12 @@ function Chips(props: { row: TriageRow; now: number }) {
         </>
       );
     case "vendor_api": {
+      if (e.kind === "worker") {
+        return <Chip label="errors" signal={l["cf.error_rate"]} now={now} render={(s) => formatSignalValue(s, now)} />;
+      }
+      if (e.kind === "database") {
+        return <Chip label="size" signal={l["d1.size_bytes"]} now={now} render={(s) => formatSignalValue(s, now)} />;
+      }
       const anomaly = l["spend.anomaly"];
       const budget = l["budget.status"];
       return (
