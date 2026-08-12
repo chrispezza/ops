@@ -6,6 +6,10 @@ const TOPIC_CATEGORY: Record<string, string> = {
   "web-app": "web_app",
   mcp: "plugin_skill",
   skill: "plugin_skill",
+  "claude-plugin": "plugin_skill",
+  "claude-code-plugin": "plugin_skill",
+  tool: "tooling",
+  template: "tooling",
 };
 
 const QUERY = /* GraphQL */ `
@@ -17,6 +21,7 @@ const QUERY = /* GraphQL */ `
           name
           nameWithOwner
           url
+          homepageUrl
           pushedAt
           isArchived
           isPrivate
@@ -50,6 +55,7 @@ interface RepoNode {
   name: string;
   nameWithOwner: string;
   url: string;
+  homepageUrl: string | null;
   pushedAt: string;
   isArchived: boolean;
   isPrivate: boolean;
@@ -181,6 +187,7 @@ export const github: Poller = {
             language: repo.primaryLanguage?.name,
             private: repo.isPrivate,
             topics,
+            homepage: repo.homepageUrl || undefined, // uptime poller's target list
           },
         });
 

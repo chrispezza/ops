@@ -81,7 +81,7 @@ describe("anthropic_usage poller", () => {
       }),
     );
 
-    const result = await anthropicUsage.poll({ ...env, ANTHROPIC_ADMIN_KEY: "sk-ant-admin-test" } as Env, {});
+    const result = await anthropicUsage.poll({ ...env, ANTHROPIC_ADMIN_KEY: "sk-ant-admin-test" } as Env, { listEntities: async () => [] });
 
     const spend = result.signals.find((s) => s.metric === "spend.usd");
     expect(spend?.entityId).toBe("vendor_api:anthropic");

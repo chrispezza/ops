@@ -8,6 +8,7 @@ export const EXPECTED_METRICS: Record<string, string[]> = {
   static_site: ["lhci.performance"],
   web_app: ["ci.status", "deps.vuln_count"],
   plugin_skill: ["usage.invocations"],
+  tooling: [], // templates/libs/experiments — categorized, but nothing is demanded of them
 };
 
 // Triage score — spec §4.1. Defaults here; overridable via /settings (stored in D1).

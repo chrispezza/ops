@@ -57,7 +57,7 @@ describe("github poller", () => {
       ),
     );
 
-    const result = await github.poll(testEnv, {});
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
 
     // archived repo skipped; categories from topics
     expect(result.entities.map((e) => e.id)).toEqual(["repo:clownware/gittunes", "repo:clownware/untagged"]);
@@ -112,7 +112,7 @@ describe("github poller", () => {
       }),
     );
 
-    const result = await github.poll(testEnv, {});
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
     const sig = (metric: string) => result.signals.find((s) => s.metric === metric);
 
     expect(sig("release.age_days")?.valueNum).toBe(10);
@@ -139,7 +139,7 @@ describe("github poller", () => {
       }),
     );
 
-    const result = await github.poll(testEnv, {});
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
     expect(result.signals.find((s) => s.metric === "ci.status")).toBeDefined();
     expect(result.signals.find((s) => s.metric === "ci.duration_ms")).toBeUndefined();
     expect(result.signals.find((s) => s.metric === "release.age_days")).toBeUndefined();
@@ -161,20 +161,20 @@ describe("github poller", () => {
       GITHUB_PAT: "personal-pat",
       GITHUB_PAT_CLOWNWARE: "org-pat",
     } as unknown as Env;
-    await github.poll(multiEnv, {});
+    await github.poll(multiEnv, { listEntities: async () => [] });
 
     expect(authHeaders).toEqual(["Bearer personal-pat", "Bearer org-pat"]);
   });
 
   it("fails loudly when unconfigured (error isolation turns this into a signal)", async () => {
-    await expect(github.poll({ ...testEnv, GITHUB_OWNERS: "" } as Env, {})).rejects.toThrow(/GITHUB_OWNERS/);
-    await expect(github.poll({ ...testEnv, GITHUB_PAT: undefined } as unknown as Env, {})).rejects.toThrow(
+    await expect(github.poll({ ...testEnv, GITHUB_OWNERS: "" } as Env, { listEntities: async () => [] })).rejects.toThrow(/GITHUB_OWNERS/);
+    await expect(github.poll({ ...testEnv, GITHUB_PAT: undefined } as unknown as Env, { listEntities: async () => [] })).rejects.toThrow(
       /GITHUB_PAT/,
     );
   });
 
   it("surfaces GraphQL errors with context", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ errors: [{ message: "bad credentials" }] })));
-    await expect(github.poll(testEnv, {})).rejects.toThrow(/bad credentials/);
+    await expect(github.poll(testEnv, { listEntities: async () => [] })).rejects.toThrow(/bad credentials/);
   });
 });

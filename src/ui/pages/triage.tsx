@@ -34,7 +34,7 @@ export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; n
         <input type="search" name="q" placeholder="filter… ( / )" value={props.filters.q ?? ""} />
         <select name="category">
           <option value="">all categories</option>
-          {["static_site", "web_app", "plugin_skill", "vendor_api"].map((c) => (
+          {["static_site", "web_app", "plugin_skill", "tooling", "vendor_api"].map((c) => (
             <option value={c} selected={props.filters.category === c}>
               {c}
             </option>

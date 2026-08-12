@@ -1,6 +1,31 @@
 import { POLLERS } from "../pollers";
-import type { Poller, Schedule } from "../pollers/types";
+import type { KnownEntity, Poller, PollerCtx, Schedule } from "../pollers/types";
 import { insertSignals, upsertEntities } from "./store";
+
+function makeCtx(db: D1Database): PollerCtx {
+  return {
+    async listEntities(kind) {
+      const stmt = kind
+        ? db.prepare("SELECT id, kind, category, name, metadata, archived FROM entities WHERE kind = ?1").bind(kind)
+        : db.prepare("SELECT id, kind, category, name, metadata, archived FROM entities");
+      const res = await stmt.all<{
+        id: string;
+        kind: string;
+        category: string | null;
+        name: string;
+        metadata: string | null;
+        archived: number;
+      }>();
+      return res.results.map(
+        (r): KnownEntity => ({
+          ...r,
+          metadata: r.metadata ? (JSON.parse(r.metadata) as Record<string, unknown>) : null,
+          archived: r.archived === 1,
+        }),
+      );
+    },
+  };
+}
 
 export interface RunSummary {
   pollerId: string;
@@ -22,11 +47,12 @@ export async function runPollers(
   const now = opts?.now ?? Math.floor(Date.now() / 1000);
   const summaries: RunSummary[] = [];
 
+  const ctx = makeCtx(env.DB);
   for (const poller of pollers) {
     const t0 = Date.now();
     let summary: RunSummary;
     try {
-      const result = await poller.poll(env, {});
+      const result = await poller.poll(env, ctx);
       await upsertEntities(env.DB, result.entities, now);
       await insertSignals(env.DB, poller.id, result.signals);
       summary = {

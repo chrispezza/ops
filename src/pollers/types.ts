@@ -33,9 +33,26 @@ export interface PollerResult {
 
 export type Schedule = "hourly" | "daily";
 
+// Read-only view of an already-known entity, for pollers that derive their
+// target list from what other pollers discovered (e.g. uptime ← homepages).
+export interface KnownEntity {
+  id: string;
+  kind: string;
+  category: string | null;
+  name: string;
+  metadata: Record<string, unknown> | null;
+  archived: boolean;
+}
+
+export interface PollerCtx {
+  since?: number;
+  // Provided by the runner. Reading is fine — writing stays core-only (spec §3).
+  listEntities(kind?: Kind): Promise<KnownEntity[]>;
+}
+
 export interface Poller {
   id: string; // "github", "anthropic_usage", …
   metricSemantics: Record<string, "state" | "interval">; // every metric this poller emits
   schedule: Schedule;
-  poll(env: Env, ctx: { since?: number }): Promise<PollerResult>;
+  poll(env: Env, ctx: PollerCtx): Promise<PollerResult>;
 }

@@ -6,6 +6,7 @@ const SECTIONS: { category: string; title: string }[] = [
   { category: "static_site", title: "Static Sites" },
   { category: "web_app", title: "Web Apps" },
   { category: "plugin_skill", title: "Plugins · MCPs · Skills" },
+  { category: "tooling", title: "Tools · Templates · Experiments" },
 ];
 
 export function MapPage(props: { rows: TriageRow[]; q?: string; now: number }) {
@@ -123,10 +124,16 @@ function Chips(props: { row: TriageRow; now: number }) {
   const pushed = (
     <Chip label="pushed" signal={l["repo.pushed_at"]} now={now} render={(s) => timeAgo(s.value_num ?? 0, now)} />
   );
+  // site.up appears only for repos with a deployed homepage — not expected of
+  // every repo, so absence renders nothing rather than a warning dash
+  const site = l["site.up"] && (
+    <Chip label="site" signal={l["site.up"]} now={now} render={(s) => (s.value_num === 1 ? "up" : "DOWN")} />
+  );
   switch (e.category) {
     case "static_site":
       return (
         <>
+          {site}
           <Chip label="LHCI" signal={l["lhci.performance"]} now={now} />
           {pushed}
         </>
@@ -134,9 +141,17 @@ function Chips(props: { row: TriageRow; now: number }) {
     case "web_app":
       return (
         <>
+          {site}
           <Chip label="CI" signal={l["ci.status"]} now={now} render={(s) => (s.value_text === "success" ? "✓" : (s.value_text ?? "?"))} />
           <Chip label="vulns" signal={l["deps.vuln_count"]} now={now} />
           <Chip label="PRs" signal={l["prs.open"]} now={now} />
+          {pushed}
+        </>
+      );
+    case "tooling":
+      return (
+        <>
+          <Chip label="issues" signal={l["issues.open"]} now={now} />
           {pushed}
         </>
       );
