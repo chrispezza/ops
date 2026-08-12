@@ -4,6 +4,8 @@ interface Env {
   GITHUB_PAT?: string;
   ANTHROPIC_ADMIN_KEY?: string;
   INGEST_TOKEN?: string;
+  NTFY_URL?: string;
+  NTFY_TOKEN?: string;
 }
 
 declare namespace Cloudflare {
@@ -11,5 +13,7 @@ declare namespace Cloudflare {
     GITHUB_PAT?: string;
     ANTHROPIC_ADMIN_KEY?: string;
     INGEST_TOKEN?: string;
+    NTFY_URL?: string;
+    NTFY_TOKEN?: string;
   }
 }

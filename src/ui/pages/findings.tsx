@@ -34,7 +34,7 @@ export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilte
         </select>
         <select name="category">
           <option value="">all categories</option>
-          {["static_site", "web_app", "plugin_skill", "tooling", "vendor_api"].map((c) => (
+          {["static_site", "web_app", "plugin_skill", "tooling", "client_project", "vendor_api"].map((c) => (
             <option value={c} selected={f.category === c}>
               {c}
             </option>

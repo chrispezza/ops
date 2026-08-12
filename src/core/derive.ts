@@ -204,5 +204,30 @@ export async function emitHygieneSignals(
     });
   }
 
+  // The standing triage path for inactive repos: no pushes for 90d flags low,
+  // 180d flags medium. Resolves itself on the next push; archiving removes the
+  // entity from the working set entirely. Based on push activity, NOT
+  // last_seen_at (which every hourly poll bumps).
+  const pushed = await db
+    .prepare(
+      `SELECT s.entity_id, MAX(s.value_num) AS pushed_at FROM signals s
+       JOIN entities e ON e.id = s.entity_id
+       WHERE s.metric = 'repo.pushed_at' AND e.archived = 0
+       GROUP BY s.entity_id`,
+    )
+    .all<{ entity_id: string; pushed_at: number }>();
+  for (const row of pushed.results) {
+    const days = Math.floor((now - row.pushed_at) / 86_400);
+    signals.push({
+      entityId: row.entity_id,
+      metric: "hygiene.inactive",
+      valueNum: days,
+      valueText: days >= 90 ? `no pushes for ${days}d` : "active",
+      severity: days >= 180 ? 2 : days >= 90 ? 1 : 0,
+      observedAt: now,
+      dedupeKey: "activity",
+    });
+  }
+
   await insertSignals(db, "core", signals);
 }

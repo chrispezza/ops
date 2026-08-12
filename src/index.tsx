@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { EXPECTED_METRICS, TRIAGE_WEIGHTS, type TriageWeights } from "./config";
 import { type BudgetRow, detectSpendAnomalies, emitHygieneSignals, evaluateBudgets } from "./core/derive";
+import { notifyNewAlerts } from "./core/notify";
 import {
   entitiesWithLatest,
   findings,
@@ -16,7 +17,7 @@ import {
   usageSums,
 } from "./core/queries";
 import { runPollers } from "./core/runner";
-import { computeScore, hasUsageSemantics } from "./core/score";
+import { activityAt, computeScore, hasUsageSemantics } from "./core/score";
 import { handleIngest } from "./ingest";
 import { FreshnessChip, Layout } from "./ui/layout";
 import { FindingsPage } from "./ui/pages/findings";
@@ -54,7 +55,7 @@ function sortRows(rows: TriageRow[], sort: string, now: number): TriageRow[] {
     case "name":
       return rows.sort((a, b) => a.view.name.localeCompare(b.view.name));
     case "stale":
-      return rows.sort((a, b) => a.view.last_seen_at - b.view.last_seen_at);
+      return rows.sort((a, b) => activityAt(a.view) - activityAt(b.view));
     default:
       return rows.sort((a, b) => b.score.total - a.score.total);
   }
@@ -65,6 +66,7 @@ async function derivePass(env: Env, now: number): Promise<void> {
   await emitHygieneSignals(env.DB, EXPECTED_METRICS, now);
   await evaluateBudgets(env.DB, now);
   await detectSpendAnomalies(env.DB, now);
+  await notifyNewAlerts(env.DB, env, now);
 }
 
 function distinctOwners(rows: TriageRow[]): string[] {

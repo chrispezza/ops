@@ -7,6 +7,7 @@ const SECTIONS: { category: string; title: string }[] = [
   { category: "web_app", title: "Web Apps" },
   { category: "plugin_skill", title: "Plugins · MCPs · Skills" },
   { category: "tooling", title: "Tools · Templates · Experiments" },
+  { category: "client_project", title: "Client Projects" },
 ];
 
 export function MapPage(props: { rows: TriageRow[]; q?: string; owner?: string; owners: string[]; now: number }) {

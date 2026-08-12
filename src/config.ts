@@ -9,6 +9,7 @@ export const EXPECTED_METRICS: Record<string, string[]> = {
   web_app: ["ci.status", "deps.vuln_count"],
   plugin_skill: ["usage.invocations"],
   tooling: [], // templates/libs/experiments — categorized, but nothing is demanded of them
+  client_project: [], // mixed shapes; per-repo expectations don't generalize
 };
 
 // Triage score — spec §4.1. Defaults here; overridable via /settings (stored in D1).

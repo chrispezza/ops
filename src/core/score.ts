@@ -41,7 +41,7 @@ export function computeScore(
     parts.push({ label: `${breadth} open problem${breadth > 1 ? "s" : ""}`, points: w.breadthFactor * breadth });
   }
 
-  const days = Math.floor((now - view.last_seen_at) / 86_400);
+  const days = Math.floor((now - activityAt(view)) / 86_400);
   const tier = w.staleness.find((t) => days >= t.minDays);
   if (tier) parts.push({ label: `stale ${days}d`, points: tier.points });
 
@@ -56,4 +56,10 @@ export function computeScore(
 // Kinds with usage semantics get the zero-usage bonus; everything else passes null.
 export function hasUsageSemantics(view: EntityView): boolean {
   return view.category === "plugin_skill";
+}
+
+// Staleness means "no real activity", not "not recently polled" — last_seen_at
+// is bumped every hourly poll, so for repos the push timestamp is the truth.
+export function activityAt(view: Pick<EntityView, "latest" | "last_seen_at">): number {
+  return view.latest["repo.pushed_at"]?.value_num ?? view.last_seen_at;
 }

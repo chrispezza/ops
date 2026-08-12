@@ -1,5 +1,5 @@
 import type { EntityView } from "../../core/queries";
-import type { Score } from "../../core/score";
+import { activityAt, type Score } from "../../core/score";
 import { Chip, Dot, newIssueUrl } from "../components";
 
 export interface TriageRow {
@@ -44,7 +44,7 @@ export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; o
         </select>
         <select name="category">
           <option value="">all categories</option>
-          {["static_site", "web_app", "plugin_skill", "tooling", "vendor_api"].map((c) => (
+          {["static_site", "web_app", "plugin_skill", "tooling", "client_project", "vendor_api"].map((c) => (
             <option value={c} selected={props.filters.category === c}>
               {c}
             </option>
@@ -109,7 +109,7 @@ function Row(props: { row: TriageRow; now: number }) {
   const worst = Object.values(e.latest)
     .filter((s) => s.severity > 0)
     .sort((a, b) => b.severity - a.severity)[0];
-  const staleDays = Math.floor((props.now - e.last_seen_at) / 86_400);
+  const staleDays = Math.floor((props.now - activityAt(e)) / 86_400);
   return (
     <tr class="row" data-href={`/e/${e.id}`}>
       <td class="c-dot">

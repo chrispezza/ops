@@ -10,6 +10,7 @@ const TOPIC_CATEGORY: Record<string, string> = {
   "claude-code-plugin": "plugin_skill",
   tool: "tooling",
   template: "tooling",
+  client: "client_project",
 };
 
 const QUERY = /* GraphQL */ `
@@ -29,7 +30,10 @@ const QUERY = /* GraphQL */ `
           primaryLanguage { name }
           repositoryTopics(first: 20) { nodes { topic { name } } }
           issues(states: OPEN) { totalCount }
-          pullRequests(states: OPEN) { totalCount }
+          pullRequests(states: OPEN, first: 1, orderBy: { field: CREATED_AT, direction: ASC }) {
+            totalCount
+            nodes { createdAt }
+          }
           vulnerabilityAlerts(states: OPEN) { totalCount }
           defaultBranchRef {
             name
@@ -63,7 +67,7 @@ interface RepoNode {
   primaryLanguage: { name: string } | null;
   repositoryTopics: { nodes: { topic: { name: string } }[] };
   issues: { totalCount: number };
-  pullRequests: { totalCount: number };
+  pullRequests: { totalCount: number; nodes?: { createdAt: string }[] };
   vulnerabilityAlerts: { totalCount: number } | null;
   defaultBranchRef: {
     name: string;
@@ -146,6 +150,7 @@ export const github: Poller = {
     "deps.vuln_count": "state",
     "issues.open": "state",
     "prs.open": "state",
+    "prs.oldest_days": "state",
     "release.age_days": "state",
     "repo.pushed_at": "state",
   },
@@ -219,6 +224,7 @@ export const github: Poller = {
           entityId: id,
           metric: "issues.open",
           valueNum: repo.issues.totalCount,
+          severity: repo.issues.totalCount >= 10 ? 1 : 0, // issue pressure feeds triage
           url: `${repo.url}/issues`,
           observedAt: now,
           dedupeKey: hourBucket,
@@ -231,6 +237,22 @@ export const github: Poller = {
           observedAt: now,
           dedupeKey: hourBucket,
         });
+
+        // PRs rotting is the solo-maintainer failure mode: age of the oldest
+        // open PR, warning at 14d, medium at 30d.
+        const oldestPr = repo.pullRequests.nodes?.[0];
+        if (oldestPr) {
+          const prDays = Math.floor((now - Math.floor(Date.parse(oldestPr.createdAt) / 1000)) / 86_400);
+          signals.push({
+            entityId: id,
+            metric: "prs.oldest_days",
+            valueNum: prDays,
+            severity: prDays >= 30 ? 2 : prDays >= 14 ? 1 : 0,
+            url: `${repo.url}/pulls`,
+            observedAt: now,
+            dedupeKey: hourBucket,
+          });
+        }
 
         const pushedAt = Math.floor(Date.parse(repo.pushedAt) / 1000);
         signals.push({

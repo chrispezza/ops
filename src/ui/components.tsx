@@ -23,6 +23,7 @@ export function formatSignalValue(
   const n = s.value_num;
   if (s.metric.startsWith("hygiene.missing")) return `${s.value_text} ${s.severity > 0 ? "missing" : "present"}`;
   if (s.metric === "hygiene.uncategorized") return s.severity > 0 ? "untagged" : `tagged ${s.value_text}`;
+  if (s.metric === "hygiene.inactive") return s.value_text ?? "—";
   if (s.metric === "site.up") return s.value_num === 1 ? "up" : "down";
   if (n == null) return s.value_text ?? "—";
   if (s.metric === "repo.pushed_at") return `${timeAgo(n, now)} ago`;
