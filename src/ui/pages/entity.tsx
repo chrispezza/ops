@@ -1,3 +1,4 @@
+import { DOMAIN_LABELS, labelForMetric } from "../../config";
 import type { EntityRow, SignalRow } from "../../core/queries";
 import { Dot, formatSignalValue, timeAgo } from "../components";
 
@@ -39,14 +40,16 @@ export function EntityPage(props: {
 
       {[...domains.entries()].map(([domain, signals]) => (
         <section class="section">
-          <h2>{domain}</h2>
+          <h2>{DOMAIN_LABELS[domain] ?? domain}</h2>
           <table class="rows">
             {signals.map((s) => (
               <tr class="row">
                 <td class="c-dot">
                   <Dot severity={s.severity} />
                 </td>
-                <td class="c-name">{s.metric}</td>
+                <td class="c-name" title={s.metric}>
+                  {labelForMetric(s.metric)}
+                </td>
                 <td class="num" title={s.value_num != null && s.value_text ? s.value_text : undefined}>
                   {formatSignalValue(s, now)}
                 </td>
@@ -93,7 +96,9 @@ export function HistoryRows(props: { entityId: string; history: SignalRow[]; off
               <Dot severity={s.severity} />
             </td>
             <td class="c-kind">{new Date(s.observed_at * 1000).toISOString().replace("T", " ").slice(0, 16)}</td>
-            <td class="c-name">{s.metric}</td>
+            <td class="c-name" title={s.metric}>
+              {labelForMetric(s.metric)}
+            </td>
             <td class="num">{formatSignalValue(s, props.now)}</td>
             <td class="c-kind">{s.source}</td>
             <td class="c-links">{s.url && <a href={s.url}>↗</a>}</td>

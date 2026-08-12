@@ -1,3 +1,4 @@
+import { labelForMetric } from "../config";
 import { getSetting, putSetting } from "./queries";
 
 // Push alerts for NEW or ESCALATED high-severity findings — the panel learns
@@ -37,7 +38,7 @@ export async function notifyNewAlerts(db: D1Database, env: Env, now: number): Pr
   const fresh = [...current.entries()].filter(([key, a]) => (previous[key] ?? 0) < a.severity);
   if (fresh.length > 0) {
     const lines = fresh.map(
-      ([, a]) => `${a.entity_name}: ${a.metric} ${a.value_text ?? a.value_num ?? ""} (sev ${a.severity})`,
+      ([, a]) => `${a.entity_name}: ${labelForMetric(a.metric)} ${a.value_text ?? a.value_num ?? ""} (sev ${a.severity})`,
     );
     try {
       await fetch(env.NTFY_URL, {

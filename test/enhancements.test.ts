@@ -106,7 +106,7 @@ describe("ntfy notifications", () => {
     await seedAlert(3);
     await notifyNewAlerts(env.DB, testEnv, NOW);
     expect(posts).toHaveLength(1);
-    expect(posts[0]?.body).toContain("site: site.up down (sev 3)");
+    expect(posts[0]?.body).toContain("site: site status down (sev 3)");
     expect(posts[0]?.priority).toBe("high");
 
     // same alert next cycle — silence

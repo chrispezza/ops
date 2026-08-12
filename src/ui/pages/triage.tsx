@@ -1,3 +1,4 @@
+import { labelForMetric } from "../../config";
 import type { EntityView } from "../../core/queries";
 import { activityAt, type Score } from "../../core/score";
 import { Chip, Dot, newIssueUrl } from "../components";
@@ -122,7 +123,7 @@ function Row(props: { row: TriageRow; now: number }) {
         {e.category ?? e.kind}
         {e.owner && <span class="owner"> · {e.owner}</span>}
       </td>
-      <td class="c-chips">{worst ? <Chip label={worst.metric} signal={worst} now={props.now} /> : <span class="hint">—</span>}</td>
+      <td class="c-chips">{worst ? <Chip label={labelForMetric(worst.metric)} signal={worst} now={props.now} /> : <span class="hint">—</span>}</td>
       <td class="c-why">
         {/* score breakdown behind a native disclosure — no endpoint needed */}
         <details>

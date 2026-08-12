@@ -78,7 +78,7 @@ describe("triage page", () => {
     const html = await (await SELF.fetch("https://ops.local/triage")).text();
     // gittunes: sev3 CI (30) + 2 problems (4) = 34
     expect(html).toContain("34");
-    expect(html).toContain("high ci.status");
+    expect(html).toContain("high CI status");
     // filter that excludes everything
     const filtered = await (await SELF.fetch("https://ops.local/triage?min_severity=4")).text();
     expect(filtered).toContain("Nothing matches");

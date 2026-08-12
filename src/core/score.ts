@@ -1,4 +1,4 @@
-import { TRIAGE_WEIGHTS, type TriageWeights } from "../config";
+import { labelForMetric, TRIAGE_WEIGHTS, type TriageWeights } from "../config";
 import type { EntityView, SignalRow } from "./queries";
 
 export interface ScorePart {
@@ -31,7 +31,7 @@ export function computeScore(
   );
   if (worst && worst.severity > 0) {
     parts.push({
-      label: `${SEV_WORDS[worst.severity] ?? "?"} ${worst.metric}`,
+      label: `${SEV_WORDS[worst.severity] ?? "?"} ${labelForMetric(worst.metric)}`,
       points: w.severityFactor * worst.severity,
     });
   }

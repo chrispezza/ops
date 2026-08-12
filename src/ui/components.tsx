@@ -21,7 +21,8 @@ export function formatSignalValue(
   now: number,
 ): string {
   const n = s.value_num;
-  if (s.metric.startsWith("hygiene.missing")) return `${s.value_text} ${s.severity > 0 ? "missing" : "present"}`;
+  // the metric label already names what's expected — the value is just the verdict
+  if (s.metric.startsWith("hygiene.missing")) return s.severity > 0 ? "missing" : "present";
   if (s.metric === "hygiene.uncategorized") return s.severity > 0 ? "untagged" : `tagged ${s.value_text}`;
   if (s.metric === "hygiene.inactive") return s.value_text ?? "—";
   if (s.metric === "site.up") return s.value_num === 1 ? "up" : "down";

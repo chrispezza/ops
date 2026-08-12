@@ -12,6 +12,65 @@ export const EXPECTED_METRICS: Record<string, string[]> = {
   client_project: [], // mixed shapes; per-repo expectations don't generalize
 };
 
+// Display names for metric codes. Codes stay the storage/query contract
+// (ADR-002); labels are presentation config. Unknown metrics fall back to
+// their raw code so new ingest domains render without code changes.
+export const METRIC_LABELS: Record<string, string> = {
+  "ci.status": "CI status",
+  "ci.duration_ms": "CI duration",
+  "ci.fail_streak": "CI fail streak",
+  "deps.vuln_count": "Dependabot vulns",
+  "issues.open": "open issues",
+  "prs.open": "open PRs",
+  "prs.oldest_days": "oldest PR age",
+  "repo.pushed_at": "last push",
+  "release.age_days": "release age",
+  "lhci.performance": "Lighthouse perf",
+  "tests.coverage_pct": "test coverage",
+  "audit.vuln_count": "audit vulns",
+  "site.up": "site status",
+  "site.response_ms": "site response",
+  "usage.invocations": "invocations 30d",
+  "usage.tokens_in": "tokens in",
+  "usage.tokens_out": "tokens out",
+  "usage.sessions": "sessions",
+  "usage.loc_added": "lines added",
+  "usage.commits": "commits",
+  "spend.usd": "spend",
+  "spend.anomaly": "spend anomaly",
+  "budget.status": "budget",
+  "poller.status": "poller status",
+  "hygiene.uncategorized": "category tag",
+  "hygiene.inactive": "activity",
+};
+
+export function labelForMetric(metric: string): string {
+  if (metric.startsWith("hygiene.missing.")) {
+    return `expected: ${labelForMetric(metric.slice("hygiene.missing.".length))}`;
+  }
+  if (metric === "hygiene.missing_metric") return "expected metric"; // legacy packed name
+  return METRIC_LABELS[metric] ?? metric;
+}
+
+// Entity-page section headings, keyed by metric domain prefix.
+export const DOMAIN_LABELS: Record<string, string> = {
+  ci: "CI",
+  deps: "Dependencies",
+  prs: "Pull Requests",
+  issues: "Issues",
+  repo: "Repository",
+  release: "Releases",
+  site: "Site",
+  lhci: "Lighthouse",
+  tests: "Tests",
+  audit: "Audit",
+  usage: "Usage",
+  spend: "Spend",
+  budget: "Budget",
+  hygiene: "Hygiene",
+  poller: "Poller",
+};
+
 // Triage score — spec §4.1. Defaults here; overridable via /settings (stored in D1).
 export interface TriageWeights {
   severityFactor: number; // 10 * max open severity

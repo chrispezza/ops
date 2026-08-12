@@ -1,3 +1,4 @@
+import { labelForMetric } from "../../config";
 import type { FindingRow } from "../../core/queries";
 import { Dot, formatSignalValue, timeAgo } from "../components";
 
@@ -95,7 +96,9 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
             <a href={`/e/${r.entity_id}`}>{r.entity_name}</a>
             {r.entity_archived ? <span class="c-kind"> (archived)</span> : null}
           </td>
-          <td class="c-kind">{r.metric}</td>
+          <td class="c-kind" title={r.metric}>
+            {labelForMetric(r.metric)}
+          </td>
           {/* value_text carries the explanation when a number is shown — keep it reachable */}
           <td class="num" title={r.value_num != null && r.value_text ? r.value_text : undefined}>
             {formatSignalValue(r, props.now)}

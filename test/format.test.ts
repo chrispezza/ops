@@ -20,12 +20,9 @@ describe("formatSignalValue", () => {
   });
 
   it("phrases hygiene rows unambiguously", () => {
-    expect(formatSignalValue(sig("hygiene.missing_metric", null, "lhci.performance", 1), NOW)).toBe(
-      "lhci.performance missing",
-    );
-    expect(formatSignalValue(sig("hygiene.missing_metric", null, "lhci.performance", 0), NOW)).toBe(
-      "lhci.performance present",
-    );
+    // the labeled metric column names what's expected; the value is the verdict
+    expect(formatSignalValue(sig("hygiene.missing.lhci.performance", null, "lhci.performance", 1), NOW)).toBe("missing");
+    expect(formatSignalValue(sig("hygiene.missing.lhci.performance", null, "lhci.performance", 0), NOW)).toBe("present");
     expect(formatSignalValue(sig("hygiene.uncategorized", null, "no topic", 1), NOW)).toBe("untagged");
     expect(formatSignalValue(sig("hygiene.uncategorized", null, "web_app", 0), NOW)).toBe("tagged web_app");
   });

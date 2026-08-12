@@ -50,7 +50,7 @@ describe("triage score (spec §4.1)", () => {
     const score = computeScore(v, NOW, null);
     expect(score.total).toBe(50);
     // "why" = top two contributors in words
-    expect(score.parts[0]?.label).toBe("critical deps.vuln_count");
+    expect(score.parts[0]?.label).toBe("critical Dependabot vulns");
     expect(score.parts[0]?.points).toBe(40);
     expect(score.parts[1]?.label).toBe("stale 94d");
   });
