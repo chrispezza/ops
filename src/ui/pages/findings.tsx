@@ -22,6 +22,8 @@ function sortHref(f: FindingsFilters, sort: string): string {
 
 export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilters; now: number }) {
   const f = props.filters;
+  const live = props.rows.filter((r) => !r.entity_archived);
+  const archived = props.rows.filter((r) => r.entity_archived);
   return (
     <>
       <form class="filters" hx-get="/findings" hx-target="#findings-region" hx-select="#findings-region" hx-swap="outerHTML" hx-push-url="true">
@@ -47,12 +49,21 @@ export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilte
         <button type="submit">apply</button>
       </form>
       <div id="findings-region">
-        {props.rows.length === 0 ? (
+        {live.length === 0 ? (
           <p class="hint">No findings match. Lower min severity or clear the domain filter.</p>
         ) : f.group === "entity" ? (
-          <Grouped rows={props.rows} now={props.now} />
+          <Grouped rows={live} now={props.now} />
         ) : (
-          <FindingsTable rows={props.rows} filters={f} now={props.now} />
+          <FindingsTable rows={live} filters={f} now={props.now} />
+        )}
+        {/* archived findings are history, not work — same drawer pattern as the map */}
+        {archived.length > 0 && (
+          <details class="archived-section">
+            <summary>
+              Archived findings <span class="rollup num">{archived.length}</span>
+            </summary>
+            <FindingsTable rows={archived} now={props.now} />
+          </details>
         )}
       </div>
     </>

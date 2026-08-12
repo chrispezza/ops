@@ -187,6 +187,9 @@ describe("archived entities in findings", () => {
     const html = await (await SELF.fetch("https://ops.local/findings")).text();
     expect(html).toContain("ci.status");
     expect(html).toContain("(archived)");
+    // separated into the archived drawer, not interleaved with live findings
+    expect(html).toContain("Archived findings");
+    expect(html.split("Archived findings")[0]).not.toContain(">gittunes<");
     // out of the working sections; present only in the archived block
     const map = await (await SELF.fetch("https://ops.local/")).text();
     expect(map.split("archived-section")[0]).not.toContain(">gittunes<");
