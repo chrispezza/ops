@@ -143,6 +143,11 @@ tr.row[data-href] { cursor: pointer; }
 
 th a.sort { color: var(--fg-muted); }
 th a.sort.active { color: var(--fg); text-decoration: underline; }
+
+.owner-toggle { display: inline-flex; gap: var(--space-2); align-items: center; margin-left: var(--space-2); }
+.owner-toggle a { color: var(--fg-muted); font-size: var(--text-sm); }
+.owner-toggle a.active { color: var(--fg); text-decoration: underline; }
+.c-kind .owner { color: var(--fg-muted); }
 td.c-dot { width: 16px; }
 td.c-name a { color: var(--fg); font-weight: 500; }
 td.c-kind { color: var(--fg-muted); font-size: var(--text-xs); }

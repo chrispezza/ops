@@ -9,9 +9,9 @@ const SECTIONS: { category: string; title: string }[] = [
   { category: "tooling", title: "Tools · Templates · Experiments" },
 ];
 
-export function MapPage(props: { rows: TriageRow[]; q?: string; now: number }) {
+export function MapPage(props: { rows: TriageRow[]; q?: string; owner?: string; owners: string[]; now: number }) {
   const { rows, now } = props;
-  if (rows.length === 0 && !props.q) return <SetupChecklist />;
+  if (rows.length === 0 && !props.q && !props.owner) return <SetupChecklist />;
 
   const known = new Set(SECTIONS.map((s) => s.category));
   // Portfolio sections hold repos; vendor/spend entities get their own section;
@@ -27,6 +27,20 @@ export function MapPage(props: { rows: TriageRow[]; q?: string; now: number }) {
       <form class="filters" hx-get="/" hx-target="#map-region" hx-select="#map-region" hx-swap="outerHTML" hx-push-url="true">
         <input type="search" name="q" placeholder="filter… ( / )" value={props.q ?? ""} />
         <button type="submit">apply</button>
+        {/* ux §1: owner is a first-class map param */}
+        <span class="owner-toggle">
+          <a href={props.q ? `/?q=${encodeURIComponent(props.q)}` : "/"} class={!props.owner ? "active" : ""}>
+            all
+          </a>
+          {props.owners.map((o) => (
+            <a
+              href={`/?owner=${encodeURIComponent(o)}${props.q ? `&q=${encodeURIComponent(props.q)}` : ""}`}
+              class={props.owner === o ? "active" : ""}
+            >
+              {o}
+            </a>
+          ))}
+        </span>
       </form>
       <div id="map-region">
         {SECTIONS.map((s) => (
@@ -102,7 +116,10 @@ function Row(props: { row: TriageRow; now: number }) {
       <td class="c-name">
         <a href={`/e/${e.id}`}>{e.name}</a>
       </td>
-      <td class="c-kind">{e.category ?? e.kind}</td>
+      <td class="c-kind">
+        {e.category ?? e.kind}
+        {e.owner && <span class="owner"> · {e.owner}</span>}
+      </td>
       <td class="c-chips">
         <Chips row={props.row} now={props.now} />
       </td>

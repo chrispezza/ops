@@ -67,14 +67,22 @@ async function derivePass(env: Env, now: number): Promise<void> {
   await detectSpendAnomalies(env.DB, now);
 }
 
+function distinctOwners(rows: TriageRow[]): string[] {
+  return [...new Set(rows.map((r) => r.view.owner).filter((o): o is string => !!o))].sort();
+}
+
 app.get("/", async (c) => {
   const now = epochNow();
   const q = c.req.query("q")?.toLowerCase();
+  const owner = c.req.query("owner") || undefined;
   const [rows, health] = await Promise.all([scoredViews(c.env.DB, now), pollerHealth(c.env.DB)]);
-  const filtered = q ? rows.filter((r) => r.view.name.toLowerCase().includes(q)) : rows;
+  const owners = distinctOwners(rows);
+  const filtered = rows
+    .filter((r) => !q || r.view.name.toLowerCase().includes(q))
+    .filter((r) => !owner || r.view.owner === owner);
   return c.html(
     <Layout path="/" health={health} now={now}>
-      <MapPage rows={filtered} q={q} now={now} />
+      <MapPage rows={filtered} q={q} owner={owner} owners={owners} now={now} />
     </Layout>,
   );
 });
@@ -84,15 +92,18 @@ app.get("/triage", async (c) => {
   const filters = {
     kind: c.req.query("kind") || undefined,
     category: c.req.query("category") || undefined,
+    owner: c.req.query("owner") || undefined,
     minSeverity: Number(c.req.query("min_severity") ?? 0),
     q: c.req.query("q") || undefined,
     sort: c.req.query("sort") || undefined,
   };
   const [rows, health] = await Promise.all([scoredViews(c.env.DB, now), pollerHealth(c.env.DB)]);
+  const owners = distinctOwners(rows);
   const filtered = sortRows(
     rows
       .filter((r) => !filters.kind || r.view.kind === filters.kind)
       .filter((r) => !filters.category || r.view.category === filters.category)
+      .filter((r) => !filters.owner || r.view.owner === filters.owner)
       .filter((r) => r.view.maxSeverity >= (filters.minSeverity ?? 0))
       .filter((r) => !filters.q || r.view.name.toLowerCase().includes(filters.q.toLowerCase())),
     filters.sort ?? "score",
@@ -100,7 +111,7 @@ app.get("/triage", async (c) => {
   );
   return c.html(
     <Layout path="/triage" title="Triage" health={health} now={now}>
-      <TriagePage rows={filtered} filters={filters} now={now} />
+      <TriagePage rows={filtered} filters={filters} owners={owners} now={now} />
     </Layout>,
   );
 });

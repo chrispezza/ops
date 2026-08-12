@@ -154,6 +154,29 @@ describe("interval chips + entity scoping", () => {
   });
 });
 
+describe("owner filter", () => {
+  it("scopes map and triage to one owner via URL param", async () => {
+    await seedRepo(); // gittunes + mystery, both owner clownware
+    await upsertEntities(
+      env.DB,
+      [{ id: "repo:chrispezza/deprep", kind: "repo", category: "web_app", name: "deprep", owner: "chrispezza" }],
+      NOW,
+    );
+
+    const all = await (await SELF.fetch("https://ops.local/")).text();
+    expect(all).toContain("gittunes");
+    expect(all).toContain("deprep");
+
+    const scoped = await (await SELF.fetch("https://ops.local/?owner=chrispezza")).text();
+    expect(scoped).toContain("deprep");
+    expect(scoped).not.toContain(">gittunes<");
+
+    const triage = await (await SELF.fetch("https://ops.local/triage?owner=clownware")).text();
+    expect(triage).toContain("gittunes");
+    expect(triage).not.toContain(">deprep<");
+  });
+});
+
 describe("archived entities in findings", () => {
   it("stay visible on /findings with an archived badge", async () => {
     await seedRepo();

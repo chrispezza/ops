@@ -11,6 +11,7 @@ export interface TriageRow {
 export interface TriageFilters {
   kind?: string;
   category?: string;
+  owner?: string;
   minSeverity?: number;
   q?: string;
   sort?: string;
@@ -21,17 +22,26 @@ function sortHref(f: TriageFilters, sort: string): string {
   if (f.q) params.set("q", f.q);
   if (f.kind) params.set("kind", f.kind);
   if (f.category) params.set("category", f.category);
+  if (f.owner) params.set("owner", f.owner);
   if (f.minSeverity) params.set("min_severity", String(f.minSeverity));
   params.set("sort", sort);
   return `/triage?${params.toString()}`;
 }
 
 // The daily driver: the map flattened and sorted by pain (ux §2.2).
-export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; now: number }) {
+export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; owners: string[]; now: number }) {
   return (
     <>
       <form class="filters" hx-get="/triage" hx-target="#triage-table" hx-select="#triage-table" hx-swap="outerHTML" hx-push-url="true">
         <input type="search" name="q" placeholder="filter… ( / )" value={props.filters.q ?? ""} />
+        <select name="owner">
+          <option value="">all owners</option>
+          {props.owners.map((o) => (
+            <option value={o} selected={props.filters.owner === o}>
+              {o}
+            </option>
+          ))}
+        </select>
         <select name="category">
           <option value="">all categories</option>
           {["static_site", "web_app", "plugin_skill", "tooling", "vendor_api"].map((c) => (
@@ -108,7 +118,10 @@ function Row(props: { row: TriageRow; now: number }) {
       <td class="c-name">
         <a href={`/e/${e.id}`}>{e.name}</a>
       </td>
-      <td class="c-kind">{e.category ?? e.kind}</td>
+      <td class="c-kind">
+        {e.category ?? e.kind}
+        {e.owner && <span class="owner"> · {e.owner}</span>}
+      </td>
       <td class="c-chips">{worst ? <Chip label={worst.metric} signal={worst} now={props.now} /> : <span class="hint">—</span>}</td>
       <td class="c-why">
         {/* score breakdown behind a native disclosure — no endpoint needed */}
