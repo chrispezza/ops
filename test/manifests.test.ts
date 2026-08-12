@@ -93,11 +93,11 @@ describe("manifests poller", () => {
     const plugin = await latestSignals(env.DB, "plugin:clownware/code-tools");
     expect(plugin.filter((s) => s.metric.startsWith("hygiene.missing."))).toHaveLength(0);
 
-    // repos in the same category still get the expectation
-    await upsertEntities(env.DB, [{ id: "repo:x/skillrepo", kind: "repo", category: "plugin_skill", name: "skillrepo" }], NOW);
+    // repo categories with real expectations still get them (kind-scoping check)
+    await upsertEntities(env.DB, [{ id: "repo:x/webapp", kind: "repo", category: "web_app", name: "webapp" }], NOW);
     await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW + 60);
-    const repo = await latestSignals(env.DB, "repo:x/skillrepo");
-    expect(repo.find((s) => s.metric === "hygiene.missing.usage.invocations")?.severity).toBe(1);
+    const repo = await latestSignals(env.DB, "repo:x/webapp");
+    expect(repo.find((s) => s.metric === "hygiene.missing.ci.status")?.severity).toBe(1);
   });
 
   it("map shows plugin rows with skill rollup, not forty skill rows", async () => {

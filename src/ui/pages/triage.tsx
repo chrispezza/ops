@@ -86,7 +86,7 @@ export function TriageTable(props: { rows: TriageRow[]; filters: TriageFilters; 
         <th>kind</th>
         <th>top signal</th>
         <th>why</th>
-        <th class="num">
+        <th class="num" title="score = worst severity ×10 + findings ≥medium ×2 + staleness (30d +3 / 90d +6) + zero-usage +5 — weights adjustable in /settings">
           <a class={`sort ${sort === "score" ? "active" : ""}`} href={sortHref(props.filters, "score")}>
             score
           </a>

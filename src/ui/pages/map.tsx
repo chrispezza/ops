@@ -112,7 +112,7 @@ function AttentionStrip(props: { rows: TriageRow[] }) {
     <p class="attention">
       <span class="attention-label">needs attention</span>
       {top.map((r) => (
-        <a href={`/e/${r.view.id}`}>
+        <a href={`/e/${r.view.id}`} title={r.score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ")}>
           <Dot severity={r.view.maxSeverity} /> {r.view.name} <span class="num">{r.score.total}</span>
         </a>
       ))}
@@ -198,7 +198,9 @@ function Row(props: { row: TriageRow; now: number }) {
       <td class="c-chips">
         <Chips row={props.row} now={props.now} />
       </td>
-      <td class="num">{score.total > 0 ? score.total : ""}</td>
+      <td class="num" title={score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ") || undefined}>
+        {score.total > 0 ? score.total : ""}
+      </td>
       <td class="c-links">
         {/* the uptime signal's url IS the deployed site — one link, straight to prod */}
         {e.latest["site.up"]?.url && <a href={e.latest["site.up"]?.url ?? ""}>live</a>}

@@ -7,7 +7,10 @@
 export const EXPECTED_METRICS: Record<string, string[]> = {
   static_site: ["lhci.performance"],
   web_app: ["ci.status", "deps.vuln_count"],
-  plugin_skill: ["usage.invocations"],
+  // usage.invocations returns here when invocation telemetry actually exists
+  // (work-phase skill_usage poller) — expecting data no poller can provide
+  // just inflates every skill repo with phantom findings.
+  plugin_skill: [],
   tooling: [], // templates/libs/experiments — categorized, but nothing is demanded of them
   client_project: [], // mixed shapes; per-repo expectations don't generalize
 };

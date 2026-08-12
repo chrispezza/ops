@@ -51,9 +51,17 @@ async function scoredViews(db: D1Database, now: number): Promise<TriageRow[]> {
     usageSums(db, "usage.invocations", now - 30 * DAY),
     getSetting<TriageWeights>(db, "triage_weights"),
   ]);
+  // the zero-usage bonus only means something once usage telemetry exists at
+  // all — before that it's a flat +5 for every skill repo, pure noise
+  const usageDataExists = usage.size > 0;
   return views.map((view) => ({
     view,
-    score: computeScore(view, now, hasUsageSemantics(view) ? (usage.get(view.id) ?? 0) : null, weights ?? TRIAGE_WEIGHTS),
+    score: computeScore(
+      view,
+      now,
+      hasUsageSemantics(view) && usageDataExists ? (usage.get(view.id) ?? 0) : null,
+      weights ?? TRIAGE_WEIGHTS,
+    ),
     // 30d SUM for the map chip (spec §2.2: interval metrics aggregate, never "latest")
     usage30d: hasUsageSemantics(view) ? (usage.get(view.id) ?? null) : null,
   }));
