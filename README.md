@@ -33,6 +33,11 @@ wrangler secret put GITHUB_PAT
 wrangler deploy
 ```
 
+Fine-grained PATs are scoped to a single resource owner. With multiple owners
+in `GITHUB_OWNERS`, set one secret per owner: `GITHUB_PAT_<OWNER>` (uppercased,
+non-alphanumerics become `_`, e.g. `GITHUB_PAT_CLOWNWARE`). `GITHUB_PAT` is the
+fallback for any owner without an override.
+
 Put Cloudflare Access in front of the Worker; there is no app-level auth.
 The one exception is `POST /ingest`, which uses its own bearer token so CI can
 push through Access service-token rules or a bypass policy for that path.

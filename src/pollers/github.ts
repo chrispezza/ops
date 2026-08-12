@@ -105,7 +105,13 @@ export const github: Poller = {
   async poll(env) {
     const owners = (env.GITHUB_OWNERS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     if (owners.length === 0) throw new Error("github: GITHUB_OWNERS is not configured");
-    if (!env.GITHUB_PAT) throw new Error("github: GITHUB_PAT secret is not set");
+
+    // Fine-grained PATs are scoped to one resource owner. GITHUB_PAT_<OWNER>
+    // (uppercased, non-alphanumerics -> "_") overrides GITHUB_PAT per owner.
+    const tokenFor = (owner: string): string | undefined => {
+      const key = `GITHUB_PAT_${owner.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+      return (env as unknown as Record<string, string | undefined>)[key] ?? env.GITHUB_PAT;
+    };
 
     const now = Math.floor(Date.now() / 1000);
     // Spec §2.3: state-count metrics dedupe on observed_at bucketed to poll granularity.
@@ -114,7 +120,9 @@ export const github: Poller = {
     const signals: SignalInsert[] = [];
 
     for (const owner of owners) {
-      for await (const repo of fetchRepos(env.GITHUB_PAT, owner)) {
+      const pat = tokenFor(owner);
+      if (!pat) throw new Error(`github: no PAT for owner ${owner} (set GITHUB_PAT or a per-owner secret)`);
+      for await (const repo of fetchRepos(pat, owner)) {
         if (repo.isArchived) continue;
         const id = `repo:${repo.nameWithOwner}`;
         const topics = repo.repositoryTopics.nodes.map((n) => n.topic.name);

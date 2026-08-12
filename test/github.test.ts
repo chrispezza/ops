@@ -86,6 +86,27 @@ describe("github poller", () => {
     expect(pushed?.dedupeKey).toBe(String(pushedEpoch));
   });
 
+  it("uses per-owner PAT overrides for fine-grained tokens", async () => {
+    const authHeaders: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        authHeaders.push(String((init?.headers as Record<string, string>)?.authorization));
+        return gqlResponse([]);
+      }),
+    );
+
+    const multiEnv = {
+      ...env,
+      GITHUB_OWNERS: "chrispezza, clownware",
+      GITHUB_PAT: "personal-pat",
+      GITHUB_PAT_CLOWNWARE: "org-pat",
+    } as unknown as Env;
+    await github.poll(multiEnv, {});
+
+    expect(authHeaders).toEqual(["Bearer personal-pat", "Bearer org-pat"]);
+  });
+
   it("fails loudly when unconfigured (error isolation turns this into a signal)", async () => {
     await expect(github.poll({ ...testEnv, GITHUB_OWNERS: "" } as Env, {})).rejects.toThrow(/GITHUB_OWNERS/);
     await expect(github.poll({ ...testEnv, GITHUB_PAT: undefined } as unknown as Env, {})).rejects.toThrow(
