@@ -52,6 +52,7 @@ export const METRIC_LABELS: Record<string, string> = {
   "cf.errors": "errors",
   "cf.error_rate": "error rate",
   "d1.size_bytes": "database size",
+  "docs.score": "docs health",
 };
 
 export function labelForMetric(metric: string): string {
@@ -83,6 +84,7 @@ export const DOMAIN_LABELS: Record<string, string> = {
   manifest: "Manifest",
   cf: "Cloudflare",
   d1: "Database",
+  docs: "Documentation",
 };
 
 // Triage score — spec §4.1. Defaults here; overridable via /settings (stored in D1).

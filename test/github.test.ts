@@ -119,6 +119,12 @@ describe("github poller", () => {
     const branches = sig("repo:clownware/gittunes", "repo.branches");
     expect(branches?.valueNum).toBe(4);
 
+    // docs health: public repo missing README/description/CLAUDE.md/license → 0
+    const docs = sig("repo:clownware/gittunes", "docs.score");
+    expect(docs?.valueNum).toBe(0);
+    expect(docs?.severity).toBe(1);
+    expect(docs?.valueText).toBe("missing: README, description, CLAUDE.md, license");
+
     // pushed_at observed when the push happened, dedupe on the event itself
     const pushed = sig("repo:clownware/gittunes", "repo.pushed_at");
     const pushedEpoch = Math.floor(Date.parse("2026-08-02T12:00:00Z") / 1000);
@@ -204,6 +210,28 @@ describe("github poller", () => {
     await github.poll(multiEnv, { listEntities: async () => [] });
 
     expect(authHeaders).toEqual(["Bearer personal-pat", "Bearer org-pat"]);
+  });
+
+  it("scores fully documented repos clean, judging license only when public", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/tidy",
+            isPrivate: true, // license not applicable
+            description: "A tidy private repo",
+            readme: { byteLength: 4000 },
+            claudeMd: { byteLength: 900 },
+          }),
+        ]),
+      ),
+    );
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const docs = result.signals.find((s) => s.metric === "docs.score");
+    expect(docs?.valueNum).toBe(100);
+    expect(docs?.severity).toBe(0);
+    expect(docs?.valueText).toBe("complete");
   });
 
   it("fails loudly when unconfigured (error isolation turns this into a signal)", async () => {

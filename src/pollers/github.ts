@@ -27,6 +27,9 @@ const QUERY = /* GraphQL */ `
           isArchived
           isPrivate
           description
+          licenseInfo { spdxId }
+          readme: object(expression: "HEAD:README.md") { ... on Blob { byteLength } }
+          claudeMd: object(expression: "HEAD:CLAUDE.md") { ... on Blob { byteLength } }
           primaryLanguage { name }
           repositoryTopics(first: 20) { nodes { topic { name } } }
           issues(states: OPEN) { totalCount }
@@ -70,6 +73,9 @@ interface RepoNode {
   isArchived: boolean;
   isPrivate: boolean;
   description: string | null;
+  licenseInfo?: { spdxId: string | null } | null;
+  readme?: { byteLength: number } | null;
+  claudeMd?: { byteLength: number } | null;
   primaryLanguage: { name: string } | null;
   repositoryTopics: { nodes: { topic: { name: string } }[] };
   issues: { totalCount: number };
@@ -162,6 +168,7 @@ export const github: Poller = {
     "prs.open": "state",
     "prs.oldest_days": "state",
     "repo.branches": "state",
+    "docs.score": "state",
     "release.age_days": "state",
     "repo.pushed_at": "state",
   },
@@ -281,6 +288,30 @@ export const github: Poller = {
             dedupeKey: hourBucket,
           });
         }
+
+        // Documentation health: equal-weight checks over what applies to the
+        // repo (license only judged on public repos; CLAUDE.md is the user's
+        // own stated convention). valueText names exactly what's missing.
+        const docsChecks: [string, boolean][] = [
+          ["README", (repo.readme?.byteLength ?? 0) >= 200],
+          ["description", !!repo.description?.trim()],
+          ["CLAUDE.md", !!repo.claudeMd],
+        ];
+        if (!repo.isPrivate) {
+          docsChecks.push(["license", !!repo.licenseInfo?.spdxId && repo.licenseInfo.spdxId !== "NOASSERTION"]);
+        }
+        const missing = docsChecks.filter(([, ok]) => !ok).map(([name]) => name);
+        const docsScore = Math.round(((docsChecks.length - missing.length) / docsChecks.length) * 100);
+        signals.push({
+          entityId: id,
+          metric: "docs.score",
+          valueNum: docsScore,
+          valueText: missing.length > 0 ? `missing: ${missing.join(", ")}` : "complete",
+          severity: docsScore < 100 ? 1 : 0,
+          url: repo.url,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
 
         // PRs rotting is the solo-maintainer failure mode: age of the oldest
         // open PR, warning at 14d, medium at 30d.

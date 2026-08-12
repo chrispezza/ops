@@ -200,6 +200,8 @@ function Row(props: { row: TriageRow; now: number }) {
       </td>
       <td class="num">{score.total > 0 ? score.total : ""}</td>
       <td class="c-links">
+        {/* the uptime signal's url IS the deployed site — one link, straight to prod */}
+        {e.latest["site.up"]?.url && <a href={e.latest["site.up"]?.url ?? ""}>live</a>}
         {e.source_url && <a href={e.source_url}>↗</a>}
         {/* pre-filled new-issue is a repo affordance — meaningless on vendor consoles */}
         {e.kind === "repo" && e.source_url && <a href={newIssueUrl(e.source_url)}>+issue</a>}
@@ -222,6 +224,10 @@ function Chips(props: { row: TriageRow; now: number }) {
     <Chip label="site" signal={l["site.up"]} now={now} render={(s) => (s.value_num === 1 ? "up" : "DOWN")} />
   );
   const branches = l["repo.branches"] && <Chip label="br" signal={l["repo.branches"]} now={now} />;
+  // docs health earns a chip only while incomplete — complete docs are silence
+  const docs = l["docs.score"] && (l["docs.score"]?.value_num ?? 100) < 100 && (
+    <Chip label="docs" signal={l["docs.score"]} now={now} render={(s) => String(s.value_num ?? "?")} />
+  );
   switch (e.category) {
     case "static_site":
       return (
@@ -229,6 +235,7 @@ function Chips(props: { row: TriageRow; now: number }) {
           {site}
           <Chip label="LHCI" signal={l["lhci.performance"]} now={now} />
           {branches}
+          {docs}
           {pushed}
         </>
       );
@@ -240,6 +247,7 @@ function Chips(props: { row: TriageRow; now: number }) {
           <Chip label="vulns" signal={l["deps.vuln_count"]} now={now} render={(s) => String(s.value_num ?? 0)} />
           <Chip label="PRs" signal={l["prs.open"]} now={now} />
           {branches}
+          {docs}
           {pushed}
         </>
       );
@@ -248,6 +256,7 @@ function Chips(props: { row: TriageRow; now: number }) {
         <>
           <Chip label="issues" signal={l["issues.open"]} now={now} />
           {branches}
+          {docs}
           {pushed}
         </>
       );
@@ -300,6 +309,7 @@ function Chips(props: { row: TriageRow; now: number }) {
           <Chip label="issues" signal={l["issues.open"]} now={now} />
           <Chip label="PRs" signal={l["prs.open"]} now={now} />
           {branches}
+          {docs}
           {pushed}
         </>
       );

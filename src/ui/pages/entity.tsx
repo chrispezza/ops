@@ -16,6 +16,13 @@ export function EntityPage(props: {
   // Interval metrics (period-windowed) render as series; state metrics as latest-value rows.
   const stateSignals = props.latest.filter((s) => s.period_start == null);
   const domains = groupBy(stateSignals, (s) => s.metric.split(".")[0] ?? "other");
+  const homepage = (() => {
+    try {
+      return (JSON.parse(e.metadata ?? "{}") as { homepage?: string }).homepage;
+    } catch {
+      return undefined;
+    }
+  })();
 
   return (
     <>
@@ -29,6 +36,12 @@ export function EntityPage(props: {
           {e.owner && <span>{e.owner} · </span>}
           {e.source_url && (
             <a href={e.source_url}>{e.source_url}</a>
+          )}
+          {homepage && (
+            <>
+              {" "}
+              · <a href={homepage}>live site ↗</a>
+            </>
           )}{" "}
           · first seen {timeAgo(e.first_seen_at, now)} ago · last seen {timeAgo(e.last_seen_at, now)} ago
         </p>
