@@ -22,7 +22,7 @@
 		]
 	},
 	"vars": {
-		"GITHUB_OWNERS": ""
+		"GITHUB_OWNERS": "chrispezza,clownware"
 	},
 	"observability": {
 		"enabled": true
