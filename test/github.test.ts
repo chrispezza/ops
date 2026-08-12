@@ -86,6 +86,65 @@ describe("github poller", () => {
     expect(pushed?.dedupeKey).toBe(String(pushedEpoch));
   });
 
+  it("emits release age, CI duration, and fail streak when the wider grants respond", async () => {
+    const TEN_DAYS_AGO = new Date(Date.now() - 10 * 86_400_000).toISOString();
+    const run = (id: number, conclusion: string) => ({
+      id,
+      conclusion,
+      run_started_at: "2026-08-10T12:00:00Z",
+      updated_at: "2026-08-10T12:03:00Z",
+      html_url: `https://github.com/clownware/gittunes/actions/runs/${id}`,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.includes("/actions/runs")) {
+          return Response.json({ workflow_runs: [run(99, "failure"), run(98, "failure"), run(97, "failure")] });
+        }
+        return gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/gittunes",
+            defaultBranchRef: { name: "main", target: { oid: "abc", statusCheckRollup: { state: "FAILURE" } } },
+            latestRelease: { tagName: "v1.2.0", createdAt: TEN_DAYS_AGO, url: "https://github.com/clownware/gittunes/releases/tag/v1.2.0" },
+          }),
+        ]);
+      }),
+    );
+
+    const result = await github.poll(testEnv, {});
+    const sig = (metric: string) => result.signals.find((s) => s.metric === metric);
+
+    expect(sig("release.age_days")?.valueNum).toBe(10);
+    expect(sig("release.age_days")?.dedupeKey).toBe("v1.2.0");
+    expect(sig("ci.duration_ms")?.valueNum).toBe(180_000);
+    expect(sig("ci.duration_ms")?.dedupeKey).toBe("99");
+    expect(sig("ci.fail_streak")?.valueNum).toBe(3);
+    expect(sig("ci.fail_streak")?.severity).toBe(2); // chronic: 3+ consecutive failures
+  });
+
+  it("degrades to core metrics when the token lacks Actions/Contents grants", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.includes("/actions/runs")) return new Response("forbidden", { status: 403 });
+        return gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/gittunes",
+            defaultBranchRef: { name: "main", target: { oid: "abc", statusCheckRollup: { state: "SUCCESS" } } },
+            latestRelease: null, // GraphQL nulls the field without Contents: read
+          }),
+        ]);
+      }),
+    );
+
+    const result = await github.poll(testEnv, {});
+    expect(result.signals.find((s) => s.metric === "ci.status")).toBeDefined();
+    expect(result.signals.find((s) => s.metric === "ci.duration_ms")).toBeUndefined();
+    expect(result.signals.find((s) => s.metric === "release.age_days")).toBeUndefined();
+  });
+
   it("uses per-owner PAT overrides for fine-grained tokens", async () => {
     const authHeaders: string[] = [];
     vi.stubGlobal(

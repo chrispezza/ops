@@ -27,12 +27,18 @@ const QUERY = /* GraphQL */ `
           pullRequests(states: OPEN) { totalCount }
           vulnerabilityAlerts(states: OPEN) { totalCount }
           defaultBranchRef {
+            name
             target {
               ... on Commit {
                 oid
                 statusCheckRollup { state }
               }
             }
+          }
+          latestRelease {
+            tagName
+            createdAt
+            url
           }
         }
       }
@@ -54,8 +60,10 @@ interface RepoNode {
   pullRequests: { totalCount: number };
   vulnerabilityAlerts: { totalCount: number } | null;
   defaultBranchRef: {
+    name: string;
     target: { oid: string; statusCheckRollup: { state: string } | null } | null;
   } | null;
+  latestRelease: { tagName: string; createdAt: string; url: string } | null;
 }
 
 interface GraphQLPage {
@@ -84,12 +92,42 @@ async function* fetchRepos(pat: string, owner: string): AsyncGenerator<RepoNode>
     });
     if (!res.ok) throw new Error(`github: HTTP ${res.status} for owner ${owner}`);
     const page = (await res.json()) as GraphQLPage;
-    if (page.errors?.length) throw new Error(`github: ${page.errors[0]?.message}`);
     const conn = page.data?.repositoryOwner?.repositories;
-    if (!conn) throw new Error(`github: unknown owner ${owner}`);
+    // Partial errors (e.g. a field the token can't read) still carry data —
+    // only fail when GitHub returned nothing usable at all.
+    if (!conn) {
+      if (page.errors?.length) throw new Error(`github: ${page.errors[0]?.message}`);
+      throw new Error(`github: unknown owner ${owner}`);
+    }
     yield* conn.nodes;
     cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
   } while (cursor);
+}
+
+interface WorkflowRun {
+  id: number;
+  conclusion: string | null;
+  run_started_at: string;
+  updated_at: string;
+  html_url: string;
+}
+
+// REST — workflow run history needs Actions: read. Enhancement metrics only:
+// a token without the grant gets an empty list, never a failed poll.
+async function fetchRuns(pat: string, nameWithOwner: string, branch: string): Promise<WorkflowRun[]> {
+  const res = await fetch(
+    `https://api.github.com/repos/${nameWithOwner}/actions/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=10`,
+    {
+      headers: {
+        authorization: `Bearer ${pat}`,
+        accept: "application/vnd.github+json",
+        "user-agent": "ops-dashboard",
+      },
+    },
+  );
+  if (!res.ok) return [];
+  const body = (await res.json()) as { workflow_runs?: WorkflowRun[] };
+  return body.workflow_runs ?? [];
 }
 
 export const github: Poller = {
@@ -97,9 +135,12 @@ export const github: Poller = {
   schedule: "hourly",
   metricSemantics: {
     "ci.status": "state",
+    "ci.duration_ms": "state",
+    "ci.fail_streak": "state",
     "deps.vuln_count": "state",
     "issues.open": "state",
     "prs.open": "state",
+    "release.age_days": "state",
     "repo.pushed_at": "state",
   },
   async poll(env) {
@@ -192,6 +233,50 @@ export const github: Poller = {
           observedAt: pushedAt, // when the condition was true, not when polled
           dedupeKey: String(pushedAt),
         });
+
+        // Contents: read — null when the token lacks the grant or no release exists
+        if (repo.latestRelease) {
+          const releasedAt = Math.floor(Date.parse(repo.latestRelease.createdAt) / 1000);
+          signals.push({
+            entityId: id,
+            metric: "release.age_days",
+            valueNum: Math.floor((now - releasedAt) / 86_400),
+            valueText: repo.latestRelease.tagName,
+            url: repo.latestRelease.url,
+            observedAt: now,
+            dedupeKey: repo.latestRelease.tagName, // one row per release, age updates in place
+          });
+        }
+
+        // Actions: read — CI health beyond current pass/fail
+        if (repo.defaultBranchRef?.name && head?.statusCheckRollup) {
+          const runs = await fetchRuns(pat, repo.nameWithOwner, repo.defaultBranchRef.name);
+          const latest = runs[0];
+          if (latest) {
+            signals.push({
+              entityId: id,
+              metric: "ci.duration_ms",
+              valueNum: Date.parse(latest.updated_at) - Date.parse(latest.run_started_at),
+              url: latest.html_url,
+              observedAt: Math.floor(Date.parse(latest.updated_at) / 1000),
+              dedupeKey: String(latest.id), // upstream run id
+            });
+            let streak = 0;
+            for (const run of runs) {
+              if (run.conclusion !== "failure") break;
+              streak += 1;
+            }
+            signals.push({
+              entityId: id,
+              metric: "ci.fail_streak",
+              valueNum: streak,
+              severity: streak >= 3 ? 2 : 0, // chronic failure; the current break is already sev 3 via ci.status
+              url: `${repo.url}/actions`,
+              observedAt: now,
+              dedupeKey: hourBucket,
+            });
+          }
+        }
       }
     }
     return { entities, signals } satisfies PollerResult;
