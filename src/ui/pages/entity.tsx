@@ -1,4 +1,5 @@
 import { DOMAIN_LABELS, labelForMetric } from "../../config";
+import { buildAgentPrompt } from "../../core/agent-prompt";
 import type { EntityRow, SignalRow } from "../../core/queries";
 import { Dot, formatSignalValue, timeAgo } from "../components";
 
@@ -45,6 +46,8 @@ export function EntityPage(props: {
         )}
       </header>
 
+      <AgentPrompt entity={e} latest={props.latest} now={now} />
+
       {[...domains.entries()].map(([domain, signals]) => (
         <section class="section">
           <h2>{DOMAIN_LABELS[domain] ?? domain}</h2>
@@ -87,6 +90,29 @@ export function EntityPage(props: {
         <HistoryRows entityId={e.id} history={props.history} offset={0} now={now} />
       </section>
     </>
+  );
+}
+
+// Findings → a hand-off prompt for Claude Code (or any agent). Ops supplies
+// evidence and poller-verified done-criteria; the agent gathers the rest.
+function AgentPrompt(props: { entity: EntityRow; latest: SignalRow[]; now: number }) {
+  const prompt = buildAgentPrompt(props.entity, props.latest, props.now);
+  if (!prompt) return null;
+  return (
+    <details class="section agent-prompt" id="agent">
+      <summary>
+        Agent prompt <span class="rollup">hand these findings to Claude Code</span>
+      </summary>
+      <textarea readonly rows={Math.min(24, prompt.split("\n").length + 1)}>
+        {prompt}
+      </textarea>
+      <button
+        type="button"
+        onclick="navigator.clipboard.writeText(this.closest('details').querySelector('textarea').value);this.textContent='copied'"
+      >
+        copy prompt
+      </button>
+    </details>
   );
 }
 

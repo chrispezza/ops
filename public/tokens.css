@@ -366,6 +366,33 @@ p.attention .attention-label {
 p.attention a { color: hsl(var(--fg)); font-weight: 500; }
 p.attention .attention-more { margin-left: auto; color: hsl(var(--fg-muted)); font-weight: 400; }
 
+details.agent-prompt summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: hsl(var(--fg-muted));
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: var(--space-1);
+  margin-bottom: var(--space-2);
+  list-style: none;
+}
+details.agent-prompt summary .rollup { text-transform: none; letter-spacing: normal; font-weight: 400; }
+details.agent-prompt textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  line-height: 1.5;
+  color: hsl(var(--fg-body));
+  background: hsl(var(--bg-sunken));
+  border: 1px solid hsl(var(--border));
+  padding: var(--space-2);
+  resize: vertical;
+}
+details.agent-prompt button { margin-top: var(--space-2); }
+
 details.archived-section summary {
   cursor: pointer;
   font-size: var(--text-xs);
