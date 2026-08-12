@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-0.5 -0.5 19.616 21.799" fill="none" role="img" aria-label="Pezza emblem">
+  <!-- Pezza emblem - stroke construction derived from the official vector outline.
+       ONE continuous path (the mark is drawn without lifting the pen).
+       Path length: 82.12 user units (for stroke-dashoffset draw-on timing). Heavier stroke (2.75) per brand rule: heavier weight below 32px. -->
+  <path id="mark" data-length="82.12" stroke="currentColor" stroke-width="2.75"
+        stroke-linecap="round" stroke-linejoin="round" d="M 6.192 1.0 L 15.583 1.0 A 2.041 2.041 0 0 1 16.831 4.657 L 5.064 13.747 A 1.592 1.592 0 0 0 6.037 16.599 L 15.948 16.599 A 1.637 1.637 0 0 0 16.92 13.645 L 3.62 3.819 A 1.643 1.643 0 0 0 1.0 5.14 L 0.999 19.799"/>
+</svg>

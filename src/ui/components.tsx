@@ -52,9 +52,7 @@ export function Chip(props: { label: string; signal?: SignalRow; now: number; re
       </span>
     );
   }
-  const text = props.render
-    ? props.render(signal)
-    : (signal.value_text ?? (signal.value_num != null ? String(signal.value_num) : "?"));
+  const text = props.render ? props.render(signal) : formatSignalValue(signal, now);
   const sev = signal.severity;
   const body = (
     <span class="chip" data-sev={sev} title={`${label} · observed ${timeAgo(signal.observed_at, now)} ago`}>

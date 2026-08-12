@@ -43,6 +43,7 @@ export function Layout(props: {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{props.title ? `${props.title} · Ops` : "Ops"}</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="stylesheet" href="/tokens.css" />
         <script src="/htmx.min.js" defer></script>
         {/* ux §5: "/" focuses the filter box; ux §2.1: row click navigates to the entity */}
@@ -56,7 +57,12 @@ export function Layout(props: {
       </head>
       <body>
         <nav class="top">
-          <span class="brand">Ops</span>
+          <span class="brand">
+            {/* sanctioned mono variants per ground — never recolored (Pezza rule 3) */}
+            <img class="mark-light" src="/emblem-mono-black.svg" alt="" width="18" height="18" />
+            <img class="mark-dark" src="/emblem-mono-white.svg" alt="" width="18" height="18" />
+            Ops
+          </span>
           {NAV.map(([href, label]) => (
             <a href={href} class={props.path === href ? "active" : ""}>
               {label}

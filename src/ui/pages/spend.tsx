@@ -100,7 +100,7 @@ export function SpendPage(props: {
                 <td>
                   {e.anomaly && e.anomaly.severity >= 2 && (
                     <span class="chip" data-sev="2" title={e.anomaly.value_text ?? ""}>
-                      anomaly ⚠
+                      anomaly ▲
                     </span>
                   )}
                 </td>
