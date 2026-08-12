@@ -221,12 +221,14 @@ function Chips(props: { row: TriageRow; now: number }) {
   const site = l["site.up"] && (
     <Chip label="site" signal={l["site.up"]} now={now} render={(s) => (s.value_num === 1 ? "up" : "DOWN")} />
   );
+  const branches = l["repo.branches"] && <Chip label="br" signal={l["repo.branches"]} now={now} />;
   switch (e.category) {
     case "static_site":
       return (
         <>
           {site}
           <Chip label="LHCI" signal={l["lhci.performance"]} now={now} />
+          {branches}
           {pushed}
         </>
       );
@@ -237,6 +239,7 @@ function Chips(props: { row: TriageRow; now: number }) {
           <Chip label="CI" signal={l["ci.status"]} now={now} render={(s) => (s.value_text === "success" ? "✓" : (s.value_text ?? "?"))} />
           <Chip label="vulns" signal={l["deps.vuln_count"]} now={now} />
           <Chip label="PRs" signal={l["prs.open"]} now={now} />
+          {branches}
           {pushed}
         </>
       );
@@ -244,6 +247,7 @@ function Chips(props: { row: TriageRow; now: number }) {
       return (
         <>
           <Chip label="issues" signal={l["issues.open"]} now={now} />
+          {branches}
           {pushed}
         </>
       );
@@ -295,6 +299,7 @@ function Chips(props: { row: TriageRow; now: number }) {
         <>
           <Chip label="issues" signal={l["issues.open"]} now={now} />
           <Chip label="PRs" signal={l["prs.open"]} now={now} />
+          {branches}
           {pushed}
         </>
       );

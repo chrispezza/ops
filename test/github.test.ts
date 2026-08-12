@@ -46,6 +46,7 @@ describe("github poller", () => {
             nameWithOwner: "clownware/gittunes",
             url: "https://github.com/clownware/gittunes",
             repositoryTopics: { nodes: [{ topic: { name: "web-app" } }] },
+            refs: { totalCount: 4 },
             issues: { totalCount: 4 },
             pullRequests: { totalCount: 3 },
             vulnerabilityAlerts: { totalCount: 2 },
@@ -78,6 +79,10 @@ describe("github poller", () => {
 
     // repo without CI emits no ci.status signal at all
     expect(sig("repo:clownware/untagged", "ci.status")).toBeUndefined();
+
+    // branch count captured when the API returns refs
+    const branches = sig("repo:clownware/gittunes", "repo.branches");
+    expect(branches?.valueNum).toBe(4);
 
     // pushed_at observed when the push happened, dedupe on the event itself
     const pushed = sig("repo:clownware/gittunes", "repo.pushed_at");

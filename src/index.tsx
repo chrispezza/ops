@@ -60,11 +60,16 @@ async function scoredViews(db: D1Database, now: number): Promise<TriageRow[]> {
 }
 
 function sortRows(rows: TriageRow[], sort: string, now: number): TriageRow[] {
+  const latestNum = (r: TriageRow, metric: string) => r.view.latest[metric]?.value_num ?? -1;
   switch (sort) {
     case "name":
       return rows.sort((a, b) => a.view.name.localeCompare(b.view.name));
     case "stale":
       return rows.sort((a, b) => activityAt(a.view) - activityAt(b.view));
+    case "issues":
+      return rows.sort((a, b) => latestNum(b, "issues.open") - latestNum(a, "issues.open"));
+    case "vulns":
+      return rows.sort((a, b) => latestNum(b, "deps.vuln_count") - latestNum(a, "deps.vuln_count"));
     default:
       return rows.sort((a, b) => b.score.total - a.score.total);
   }

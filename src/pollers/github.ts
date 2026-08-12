@@ -30,6 +30,7 @@ const QUERY = /* GraphQL */ `
           primaryLanguage { name }
           repositoryTopics(first: 20) { nodes { topic { name } } }
           issues(states: OPEN) { totalCount }
+          refs(refPrefix: "refs/heads/") { totalCount }
           pullRequests(states: OPEN, first: 1, orderBy: { field: CREATED_AT, direction: ASC }) {
             totalCount
             nodes { createdAt }
@@ -67,6 +68,7 @@ interface RepoNode {
   primaryLanguage: { name: string } | null;
   repositoryTopics: { nodes: { topic: { name: string } }[] };
   issues: { totalCount: number };
+  refs?: { totalCount: number } | null;
   pullRequests: { totalCount: number; nodes?: { createdAt: string }[] };
   vulnerabilityAlerts: { totalCount: number } | null;
   defaultBranchRef: {
@@ -151,6 +153,7 @@ export const github: Poller = {
     "issues.open": "state",
     "prs.open": "state",
     "prs.oldest_days": "state",
+    "repo.branches": "state",
     "release.age_days": "state",
     "repo.pushed_at": "state",
   },
@@ -237,6 +240,16 @@ export const github: Poller = {
           observedAt: now,
           dedupeKey: hourBucket,
         });
+        if (repo.refs) {
+          signals.push({
+            entityId: id,
+            metric: "repo.branches",
+            valueNum: repo.refs.totalCount,
+            url: `${repo.url}/branches`,
+            observedAt: now,
+            dedupeKey: hourBucket,
+          });
+        }
 
         // PRs rotting is the solo-maintainer failure mode: age of the oldest
         // open PR, warning at 14d, medium at 30d.

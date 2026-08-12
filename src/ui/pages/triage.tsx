@@ -92,6 +92,16 @@ export function TriageTable(props: { rows: TriageRow[]; filters: TriageFilters; 
           </a>
         </th>
         <th class="num">
+          <a class={`sort ${sort === "issues" ? "active" : ""}`} href={sortHref(props.filters, "issues")}>
+            issues
+          </a>
+        </th>
+        <th class="num">
+          <a class={`sort ${sort === "vulns" ? "active" : ""}`} href={sortHref(props.filters, "vulns")}>
+            vulns
+          </a>
+        </th>
+        <th class="num">
           <a class={`sort ${sort === "stale" ? "active" : ""}`} href={sortHref(props.filters, "stale")}>
             stale
           </a>
@@ -138,6 +148,16 @@ function Row(props: { row: TriageRow; now: number }) {
         </details>
       </td>
       <td class="num">{score.total}</td>
+      <td class="num c-kind">
+        {e.latest["issues.open"]?.value_num != null && (
+          <a href={e.latest["issues.open"]?.url ?? `/e/${e.id}`}>{e.latest["issues.open"]?.value_num}</a>
+        )}
+      </td>
+      <td class="num c-kind">
+        {e.latest["deps.vuln_count"]?.value_num != null && (
+          <a href={e.latest["deps.vuln_count"]?.url ?? `/e/${e.id}`}>{e.latest["deps.vuln_count"]?.value_num}</a>
+        )}
+      </td>
       <td class="num c-kind">{staleDays > 0 ? `${staleDays}d` : ""}</td>
       <td class="c-links">
         {e.source_url && <a href={e.source_url}>↗</a>}

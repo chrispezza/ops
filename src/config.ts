@@ -24,6 +24,7 @@ export const METRIC_LABELS: Record<string, string> = {
   "prs.open": "open PRs",
   "prs.oldest_days": "oldest PR age",
   "repo.pushed_at": "last push",
+  "repo.branches": "branches",
   "release.age_days": "release age",
   "lhci.performance": "Lighthouse perf",
   "tests.coverage_pct": "test coverage",
