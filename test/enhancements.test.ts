@@ -122,6 +122,31 @@ describe("ntfy notifications", () => {
     expect(posts[1]?.priority).toBe("urgent");
   });
 
+  it("deep-links a single alert to its entity, several to triage", async () => {
+    const clicks: (string | undefined)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        clicks.push((init?.headers as Record<string, string>)?.click);
+        return new Response("ok");
+      }),
+    );
+    const testEnv = { ...env, NTFY_URL: "https://ntfy.example/ops", OPS_URL: "https://ops.example" } as unknown as Env;
+
+    await seedAlert(3);
+    await notifyNewAlerts(env.DB, testEnv, NOW);
+    expect(clicks[0]).toBe("https://ops.example/e/repo:a/site");
+
+    // second entity joins → batched alert points at triage
+    await upsertEntities(env.DB, [{ id: "repo:a/app", kind: "repo", category: "web_app", name: "app" }], NOW);
+    await insertSignals(env.DB, "github", [
+      { entityId: "repo:a/app", metric: "ci.status", valueText: "failure", severity: 3, observedAt: NOW, dedupeKey: "c" },
+    ]);
+    await env.DB.prepare("DELETE FROM settings").run(); // reset notified state → both fresh
+    await notifyNewAlerts(env.DB, testEnv, NOW + 60);
+    expect(clicks[1]).toBe("https://ops.example/triage");
+  });
+
   it("does nothing without NTFY_URL configured", async () => {
     const spy = vi.fn();
     vi.stubGlobal("fetch", spy);

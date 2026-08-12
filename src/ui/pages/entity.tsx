@@ -34,8 +34,15 @@ export function EntityPage(props: {
         <form method="post" action="/archive">
           <input type="hidden" name="entity_id" value={e.id} />
           <input type="hidden" name="archived" value={e.archived ? "0" : "1"} />
-          <button type="submit">{e.archived ? "Unarchive" : "Archive"}</button>
+          <button type="submit">{e.archived ? "Unarchive in Ops" : "Archive in Ops"}</button>
         </form>
+        {/* Ops never writes to GitHub (ADR-001) — retiring the repo itself is a separate act */}
+        {!e.archived && e.kind === "repo" && e.source_url && (
+          <p class="hint">
+            Hides it from this dashboard only — to retire the repo itself,{" "}
+            <a href={`${e.source_url}/settings`}>archive it on GitHub ↗</a> and Ops follows on the next poll.
+          </p>
+        )}
       </header>
 
       {[...domains.entries()].map(([domain, signals]) => (

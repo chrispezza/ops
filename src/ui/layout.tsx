@@ -8,6 +8,7 @@ const NAV = [
   ["/spend", "Spend"],
   ["/findings", "Findings"],
   ["/health", "Health"],
+  ["/settings", "Settings"],
 ] as const;
 
 // ux principle 2: never lie about freshness. The chip shows worst-case

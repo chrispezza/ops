@@ -40,6 +40,13 @@ export async function notifyNewAlerts(db: D1Database, env: Env, now: number): Pr
     const lines = fresh.map(
       ([, a]) => `${a.entity_name}: ${labelForMetric(a.metric)} ${a.value_text ?? a.value_num ?? ""} (sev ${a.severity})`,
     );
+    // alerts must land somewhere: one alert → its entity page, several → triage
+    const base = env.OPS_URL?.replace(/\/$/, "");
+    const click = base
+      ? fresh.length === 1
+        ? `${base}/e/${fresh[0]?.[1].entity_id}`
+        : `${base}/triage`
+      : undefined;
     try {
       await fetch(env.NTFY_URL, {
         method: "POST",
@@ -47,6 +54,7 @@ export async function notifyNewAlerts(db: D1Database, env: Env, now: number): Pr
           title: `Ops: ${fresh.length} new finding${fresh.length > 1 ? "s" : ""}`,
           priority: fresh.some(([, a]) => a.severity >= 4) ? "urgent" : "high",
           tags: "rotating_light",
+          ...(click ? { click } : {}),
           ...(env.NTFY_TOKEN ? { authorization: `Bearer ${env.NTFY_TOKEN}` } : {}),
         },
         body: lines.join("\n"),

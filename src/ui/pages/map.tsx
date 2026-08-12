@@ -50,6 +50,7 @@ export function MapPage(props: {
           ))}
         </span>
       </form>
+      <AttentionStrip rows={rows} />
       <div id="map-region">
         {SECTIONS.map((s) => (
           <Section
@@ -58,6 +59,7 @@ export function MapPage(props: {
             now={now}
             hint={`No ${s.title.toLowerCase()} yet — tag repos with the matching topic.`}
             rollup={s.category === "plugin_skill" ? skillsRollup(rows) : undefined}
+            note={uptimeHint(s.category, rows)}
           />
         ))}
         {vendors.length > 0 && <Section title="Vendor APIs & Keys" rows={vendors} now={now} />}
@@ -100,6 +102,34 @@ export function MapPage(props: {
   );
 }
 
+// The daily question answered in zero clicks: top scorers, right at the top.
+function AttentionStrip(props: { rows: TriageRow[] }) {
+  const top = [...props.rows].sort((a, b) => b.score.total - a.score.total).filter((r) => r.score.total > 0).slice(0, 3);
+  if (top.length === 0) return null;
+  return (
+    <p class="attention">
+      <span class="attention-label">needs attention</span>
+      {top.map((r) => (
+        <a href={`/e/${r.view.id}`}>
+          <Dot severity={r.view.maxSeverity} /> {r.view.name} <span class="num">{r.score.total}</span>
+        </a>
+      ))}
+      <a href="/triage" class="attention-more">
+        triage →
+      </a>
+    </p>
+  );
+}
+
+// Teach the Website-field enrollment exactly when it applies: a deployed-site
+// section containing repos with no uptime signal.
+function uptimeHint(category: string, rows: TriageRow[]): string | undefined {
+  if (category !== "static_site" && category !== "web_app") return undefined;
+  const inSection = rows.filter((r) => r.view.category === category);
+  if (inSection.length === 0 || !inSection.some((r) => !r.view.latest["site.up"])) return undefined;
+  return "repos with a Website field on GitHub get uptime monitoring";
+}
+
 // ux §2.1: skills section header rolls up total 30d invocations.
 function skillsRollup(rows: TriageRow[]): string | undefined {
   const sums = rows.filter((r) => r.view.category === "plugin_skill" && r.usage30d != null);
@@ -114,6 +144,7 @@ function Section(props: {
   hint?: string;
   warning?: string;
   rollup?: string;
+  note?: string;
 }) {
   const { title, rows, now } = props;
   const problems = rows.filter((r) => r.view.maxSeverity >= 2).length;
@@ -129,11 +160,14 @@ function Section(props: {
       {rows.length === 0 ? (
         <p class="hint">{props.hint}</p>
       ) : (
-        <table class="rows">
-          {rows.map((r) => (
-            <Row row={r} now={now} />
-          ))}
-        </table>
+        <>
+          <table class="rows">
+            {rows.map((r) => (
+              <Row row={r} now={now} />
+            ))}
+          </table>
+          {props.note && <p class="hint">{props.note}</p>}
+        </>
       )}
     </section>
   );

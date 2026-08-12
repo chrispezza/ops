@@ -345,6 +345,27 @@ svg.spark .spark-bar.today { fill: none; stroke: hsl(var(--accent)); stroke-widt
 .budget-tick.soft { background: hsl(var(--sev-2)); }
 .budget-tick.hard { background: hsl(var(--sev-4)); }
 
+p.attention {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid hsl(var(--border-strong));
+  background: hsl(var(--bg-raised));
+  font-size: var(--text-sm);
+}
+p.attention .attention-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: hsl(var(--fg-muted));
+}
+p.attention a { color: hsl(var(--fg)); font-weight: 500; }
+p.attention .attention-more { margin-left: auto; color: hsl(var(--fg-muted)); font-weight: 400; }
+
 details.archived-section summary {
   cursor: pointer;
   font-size: var(--text-xs);
