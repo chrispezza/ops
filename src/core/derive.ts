@@ -1,4 +1,5 @@
 import type { SignalInsert } from "../pollers/types";
+import { getSetting } from "./queries";
 import { insertSignals, upsertEntities } from "./store";
 
 const DAY = 86_400;
@@ -70,6 +71,50 @@ export async function evaluateBudgets(db: D1Database, now: number): Promise<void
       url: "/spend",
       observedAt: now,
       dedupeKey: `${b.id}:${since}`,
+    });
+  }
+  await insertSignals(db, "core", signals);
+}
+
+// Prepaid balances — no vendor exposes a balance API (Anthropic, OpenAI, and
+// xAI included), so the user records a starting balance once and Ops derives
+// live remaining = starting − observed spend since that date. Stored in
+// settings; emits a balance.usd state signal per entity, updated in place.
+export interface BalanceEntry {
+  entityId: string; // e.g. "vendor_api:xai"
+  name: string;
+  startingUsd: number;
+  asOf: number; // epoch seconds — spend before this is already reflected in the starting amount
+}
+
+export async function deriveBalances(db: D1Database, now: number): Promise<void> {
+  const entries = (await getSetting<BalanceEntry[]>(db, "balances")) ?? [];
+  if (entries.length === 0) return;
+
+  const signals: SignalInsert[] = [];
+  for (const entry of entries) {
+    // balance entries may name vendors no poller creates (xAI) — ensure the entity exists
+    await upsertEntities(
+      db,
+      [{ id: entry.entityId, kind: "vendor_api", category: "vendor_api", name: entry.name }],
+      now,
+    );
+    const spent = await db
+      .prepare(
+        "SELECT SUM(value_num) AS total FROM signals WHERE entity_id = ?1 AND metric = 'spend.usd' AND period_start >= ?2",
+      )
+      .bind(entry.entityId, entry.asOf)
+      .first<{ total: number | null }>();
+    const remaining = entry.startingUsd - (spent?.total ?? 0);
+    const fraction = entry.startingUsd > 0 ? remaining / entry.startingUsd : 0;
+    signals.push({
+      entityId: entry.entityId,
+      metric: "balance.usd",
+      valueNum: remaining,
+      valueText: `$${remaining.toFixed(2)} of $${entry.startingUsd.toFixed(2)}`,
+      severity: remaining <= 0 ? 3 : fraction < 0.2 ? 2 : 0,
+      observedAt: now,
+      dedupeKey: "balance",
     });
   }
   await insertSignals(db, "core", signals);

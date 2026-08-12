@@ -80,6 +80,9 @@ export async function runPollers(
 
 async function recordPollerStatus(db: D1Database, summary: RunSummary, now: number): Promise<void> {
   const entityId = `poller:${summary.pollerId}`;
+  // "unconfigured" is a calm state, not a failure — visible on /health at
+  // severity 1 without tripping the degradation banner.
+  const severity = summary.ok ? 0 : summary.error?.startsWith("unconfigured") ? 1 : 3;
   await upsertEntities(db, [{ id: entityId, kind: "poller", name: summary.pollerId }], now);
   await insertSignals(db, "core", [
     {
@@ -87,7 +90,7 @@ async function recordPollerStatus(db: D1Database, summary: RunSummary, now: numb
       metric: "poller.status",
       valueText: JSON.stringify(summary),
       valueNum: summary.durationMs,
-      severity: summary.ok ? 0 : 3,
+      severity,
       observedAt: now,
       dedupeKey: String(now),
     },

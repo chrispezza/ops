@@ -95,13 +95,16 @@ describe("entity page", () => {
     expect(html).toContain("ci.status");
     expect(html).toContain("History");
 
-    // archive → hidden from map, still resolvable on the entity page
+    // archive → out of the working sections, into the collapsed Archived section
     const form = new FormData();
     form.set("entity_id", "repo:clownware/gittunes");
     form.set("archived", "1");
     await SELF.fetch("https://ops.local/archive", { method: "POST", body: form, redirect: "manual" });
     const map = await (await SELF.fetch("https://ops.local/")).text();
-    expect(map).not.toContain(">gittunes<");
+    expect(map).toContain("archived-section");
+    expect(map.split("archived-section")[0]).not.toContain(">gittunes<"); // absent before the archived block
+    const triage = await (await SELF.fetch("https://ops.local/triage")).text();
+    expect(triage).not.toContain(">gittunes<");
     const detail = await (await SELF.fetch("https://ops.local/e/repo:clownware/gittunes")).text();
     expect(detail).toContain("archived");
   });
@@ -184,9 +187,9 @@ describe("archived entities in findings", () => {
     const html = await (await SELF.fetch("https://ops.local/findings")).text();
     expect(html).toContain("ci.status");
     expect(html).toContain("(archived)");
-    // but hidden from map and triage
+    // out of the working sections; present only in the archived block
     const map = await (await SELF.fetch("https://ops.local/")).text();
-    expect(map).not.toContain(">gittunes<");
+    expect(map.split("archived-section")[0]).not.toContain(">gittunes<");
   });
 });
 

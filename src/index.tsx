@@ -1,12 +1,21 @@
 import { Hono } from "hono";
 import { EXPECTED_METRICS, TRIAGE_WEIGHTS, type TriageWeights } from "./config";
-import { type BudgetRow, detectSpendAnomalies, emitHygieneSignals, evaluateBudgets } from "./core/derive";
+import {
+  type BalanceEntry,
+  type BudgetRow,
+  deriveBalances,
+  detectSpendAnomalies,
+  emitHygieneSignals,
+  evaluateBudgets,
+} from "./core/derive";
 import { notifyNewAlerts } from "./core/notify";
 import {
+  archivedEntities,
   entitiesWithLatest,
   findings,
   getEntity,
   getSetting,
+  latestByMetric,
   intervalSums,
   latestSignals,
   pollerHealth,
@@ -66,6 +75,7 @@ async function derivePass(env: Env, now: number): Promise<void> {
   await emitHygieneSignals(env.DB, EXPECTED_METRICS, now);
   await evaluateBudgets(env.DB, now);
   await detectSpendAnomalies(env.DB, now);
+  await deriveBalances(env.DB, now);
   await notifyNewAlerts(env.DB, env, now);
 }
 
@@ -77,14 +87,18 @@ app.get("/", async (c) => {
   const now = epochNow();
   const q = c.req.query("q")?.toLowerCase();
   const owner = c.req.query("owner") || undefined;
-  const [rows, health] = await Promise.all([scoredViews(c.env.DB, now), pollerHealth(c.env.DB)]);
+  const [rows, health, archived] = await Promise.all([
+    scoredViews(c.env.DB, now),
+    pollerHealth(c.env.DB),
+    archivedEntities(c.env.DB),
+  ]);
   const owners = distinctOwners(rows);
   const filtered = rows
     .filter((r) => !q || r.view.name.toLowerCase().includes(q))
     .filter((r) => !owner || r.view.owner === owner);
   return c.html(
     <Layout path="/" health={health} now={now}>
-      <MapPage rows={filtered} q={q} owner={owner} owners={owners} now={now} />
+      <MapPage rows={filtered} archived={archived} q={q} owner={owner} owners={owners} now={now} />
     </Layout>,
   );
 });
@@ -189,11 +203,20 @@ app.get("/spend", async (c) => {
   const windowDays = window === "mtd" ? Math.floor((today - monthStart) / DAY) + 1 : window === "90d" ? 90 : 30;
   const since = Math.min(today - (windowDays - 1) * DAY, monthStart);
 
-  const [spend, budgets, health] = await Promise.all([
+  const [spend, budgets, health, balances] = await Promise.all([
     spendByEntity(c.env.DB, since),
     c.env.DB.prepare("SELECT * FROM budgets").all<BudgetRow>().then((r) => r.results),
     pollerHealth(c.env.DB),
+    latestByMetric(c.env.DB, "balance.usd"),
   ]);
+
+  // balance-only vendors (no spend API, e.g. xAI) still get a spend row
+  for (const id of balances.keys()) {
+    if (!spend.has(id)) {
+      const entity = await getEntity(c.env.DB, id);
+      if (entity && !entity.archived) spend.set(id, { name: entity.name, points: [] });
+    }
+  }
 
   const entities: SpendEntity[] = await Promise.all(
     [...spend.entries()].map(async ([id, e]) => ({
@@ -203,6 +226,7 @@ app.get("/spend", async (c) => {
       mtd: e.points.filter((p) => p.period_start >= monthStart).reduce((s, p) => s + p.total, 0),
       today: e.points.find((p) => p.period_start === today)?.total ?? 0,
       anomaly: (await latestSignals(c.env.DB, id)).find((s) => s.metric === "spend.anomaly"),
+      balance: balances.get(id),
     })),
   );
   entities.sort((a, b) => b.mtd - a.mtd);
@@ -217,21 +241,48 @@ app.get("/spend", async (c) => {
 
 const SETTINGS_ERRORS: Record<string, string> = {
   budget: "Budget not saved: scope is required and hard limit must be ≥ soft limit ≥ 0.",
+  balance: "Balance not saved: entity id, name, non-negative amount, and a valid date are all required.",
 };
 
 app.get("/settings", async (c) => {
   const now = epochNow();
-  const [budgets, weights, health] = await Promise.all([
+  const [budgets, weights, balances, health] = await Promise.all([
     c.env.DB.prepare("SELECT * FROM budgets").all<BudgetRow>().then((r) => r.results),
     getSetting<TriageWeights>(c.env.DB, "triage_weights"),
+    getSetting<BalanceEntry[]>(c.env.DB, "balances"),
     pollerHealth(c.env.DB),
   ]);
   const error = SETTINGS_ERRORS[c.req.query("err") ?? ""];
   return c.html(
     <Layout path="/settings" title="Settings" health={health} now={now}>
-      <SettingsPage budgets={budgets} weights={weights ?? TRIAGE_WEIGHTS} error={error} />
+      <SettingsPage budgets={budgets} weights={weights ?? TRIAGE_WEIGHTS} balances={balances ?? []} error={error} />
     </Layout>,
   );
+});
+
+app.post("/settings/balances", async (c) => {
+  const form = await c.req.formData();
+  const entityId = String(form.get("entity_id") ?? "").trim();
+  const name = String(form.get("name") ?? "").trim();
+  const startingUsd = Number(form.get("starting_usd"));
+  const asOf = Math.floor(Date.parse(String(form.get("as_of") ?? "")) / 1000);
+  if (!entityId.includes(":") || !name || !Number.isFinite(startingUsd) || startingUsd < 0 || !Number.isFinite(asOf)) {
+    return c.redirect("/settings?err=balance");
+  }
+  const balances = (await getSetting<BalanceEntry[]>(c.env.DB, "balances")) ?? [];
+  const next = balances.filter((b) => b.entityId !== entityId);
+  next.push({ entityId, name, startingUsd, asOf });
+  await putSetting(c.env.DB, "balances", next);
+  await deriveBalances(c.env.DB, epochNow());
+  return c.redirect("/settings");
+});
+
+app.post("/settings/balances/delete", async (c) => {
+  const form = await c.req.formData();
+  const entityId = String(form.get("entity_id") ?? "");
+  const balances = (await getSetting<BalanceEntry[]>(c.env.DB, "balances")) ?? [];
+  await putSetting(c.env.DB, "balances", balances.filter((b) => b.entityId !== entityId));
+  return c.redirect("/settings");
 });
 
 app.post("/settings/budgets", async (c) => {

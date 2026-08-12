@@ -1,8 +1,13 @@
 import type { TriageWeights } from "../../config";
-import type { BudgetRow } from "../../core/derive";
+import type { BalanceEntry, BudgetRow } from "../../core/derive";
 
-// The only writes to Ops-owned data (ux §2.7): budgets and triage weights.
-export function SettingsPage(props: { budgets: BudgetRow[]; weights: TriageWeights; error?: string }) {
+// The only writes to Ops-owned data (ux §2.7): budgets, triage weights, balances.
+export function SettingsPage(props: {
+  budgets: BudgetRow[];
+  weights: TriageWeights;
+  balances: BalanceEntry[];
+  error?: string;
+}) {
   const w = props.weights;
   const staleness90 = w.staleness.find((t) => t.minDays === 90)?.points ?? 6;
   const staleness30 = w.staleness.find((t) => t.minDays === 30)?.points ?? 3;
@@ -49,6 +54,46 @@ export function SettingsPage(props: { budgets: BudgetRow[]; weights: TriageWeigh
           <button type="submit">add budget</button>
         </form>
         <p class="hint">Metric is spend.usd; crossing soft emits severity 2, hard emits severity 4.</p>
+      </section>
+
+      <section class="section">
+        <h2>Prepaid balances</h2>
+        {props.balances.length > 0 && (
+          <table class="rows">
+            <tr>
+              <th>entity</th>
+              <th>name</th>
+              <th class="num">starting</th>
+              <th>as of</th>
+              <th />
+            </tr>
+            {props.balances.map((b) => (
+              <tr class="row">
+                <td class="c-kind">{b.entityId}</td>
+                <td>{b.name}</td>
+                <td class="num">${b.startingUsd.toFixed(2)}</td>
+                <td class="c-kind">{new Date(b.asOf * 1000).toISOString().slice(0, 10)}</td>
+                <td class="c-links">
+                  <form method="post" action="/settings/balances/delete">
+                    <input type="hidden" name="entity_id" value={b.entityId} />
+                    <button type="submit">delete</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </table>
+        )}
+        <form method="post" action="/settings/balances" class="filters">
+          <input name="entity_id" placeholder="entity id (vendor_api:xai)" required />
+          <input name="name" placeholder="display name" required />
+          <input name="starting_usd" type="number" step="0.01" min="0" placeholder="starting $" required />
+          <input name="as_of" type="date" required />
+          <button type="submit">add balance</button>
+        </form>
+        <p class="hint">
+          No vendor exposes a balance API — record the credit balance once and Ops derives live remaining
+          (starting − observed spend since that date). Low balance flags at &lt;20%, empty at $0.
+        </p>
       </section>
 
       <section class="section">

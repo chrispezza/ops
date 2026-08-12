@@ -99,6 +99,40 @@ export async function entitiesWithLatest(db: D1Database): Promise<EntityView[]> 
   return [...byId.values()];
 }
 
+export interface ArchivedEntity {
+  id: string;
+  name: string;
+  kind: string;
+  category: string | null;
+  owner: string | null;
+}
+
+// Archived entities keep their history but leave the working set; the map
+// shows them in a collapsed section so "what did I retire" stays answerable.
+export async function archivedEntities(db: D1Database): Promise<ArchivedEntity[]> {
+  const res = await db
+    .prepare(
+      `SELECT id, name, kind, category, owner FROM entities
+       WHERE archived = 1 AND kind NOT IN ('poller', 'budget') ORDER BY name`,
+    )
+    .all<ArchivedEntity>();
+  return res.results;
+}
+
+// Latest signal of one metric across all entities (e.g. balance.usd per vendor).
+export async function latestByMetric(db: D1Database, metric: string): Promise<Map<string, SignalRow>> {
+  const res = await db
+    .prepare(
+      `SELECT * FROM (
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY observed_at DESC, id DESC) AS rn
+         FROM signals WHERE metric = ?1
+       ) WHERE rn = 1`,
+    )
+    .bind(metric)
+    .all<SignalRow>();
+  return new Map(res.results.map((s) => [s.entity_id, s]));
+}
+
 export interface PollerHealth {
   entityId: string;
   name: string;

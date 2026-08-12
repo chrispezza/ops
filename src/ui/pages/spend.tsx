@@ -10,6 +10,7 @@ export interface SpendEntity {
   mtd: number;
   today: number;
   anomaly: SignalRow | undefined;
+  balance: SignalRow | undefined;
 }
 
 // Server-rendered inline SVG bars — no chart library (ux §2.3). Today's bar is
@@ -97,6 +98,14 @@ export function SpendPage(props: {
                   <Sparkline points={e.points} days={props.windowDays} now={now} />
                 </td>
                 <td class="num">today ${e.today.toFixed(2)}</td>
+                <td class="num">
+                  {e.balance && (
+                    <span class="chip" data-sev={e.balance.severity} title={e.balance.value_text ?? ""}>
+                      bal ${(e.balance.value_num ?? 0).toFixed(2)}
+                      {e.balance.severity >= 2 ? "▲" : ""}
+                    </span>
+                  )}
+                </td>
                 <td>
                   {e.anomaly && e.anomaly.severity >= 2 && (
                     <span class="chip" data-sev="2" title={e.anomaly.value_text ?? ""}>

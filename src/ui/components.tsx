@@ -28,7 +28,9 @@ export function formatSignalValue(
   if (s.metric === "site.up") return s.value_num === 1 ? "up" : "down";
   if (n == null) return s.value_text ?? "—";
   if (s.metric === "repo.pushed_at") return `${timeAgo(n, now)} ago`;
-  if (s.metric.startsWith("spend.") || s.metric === "budget.status") return `$${n.toFixed(2)}`;
+  if (s.metric.startsWith("spend.") || s.metric === "budget.status" || s.metric === "balance.usd")
+    return `$${n.toFixed(2)}`;
+  if (s.metric === "usage.cap_pct") return `${n}%`;
   if (s.metric.endsWith("_ms")) return n >= 60_000 ? `${Math.floor(n / 60_000)}m${Math.round((n % 60_000) / 1000)}s` : `${Math.round(n / 1000)}s`;
   if (s.metric.endsWith("_days")) return `${n}d`;
   if (s.metric.startsWith("usage.tokens")) return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(0)}k` : String(n);

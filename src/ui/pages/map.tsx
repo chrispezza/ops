@@ -1,4 +1,4 @@
-import type { EntityView } from "../../core/queries";
+import type { ArchivedEntity, EntityView } from "../../core/queries";
 import { Chip, Dot, formatSignalValue, newIssueUrl, timeAgo } from "../components";
 import type { TriageRow } from "./triage";
 
@@ -10,7 +10,14 @@ const SECTIONS: { category: string; title: string }[] = [
   { category: "client_project", title: "Client Projects" },
 ];
 
-export function MapPage(props: { rows: TriageRow[]; q?: string; owner?: string; owners: string[]; now: number }) {
+export function MapPage(props: {
+  rows: TriageRow[];
+  archived: ArchivedEntity[];
+  q?: string;
+  owner?: string;
+  owners: string[];
+  now: number;
+}) {
   const { rows, now } = props;
   if (rows.length === 0 && !props.q && !props.owner) return <SetupChecklist />;
 
@@ -63,6 +70,31 @@ export function MapPage(props: { rows: TriageRow[]; q?: string; owner?: string; 
           />
         )}
         {other.length > 0 && <Section title="Other" rows={other} now={now} />}
+        {props.archived.length > 0 && (
+          <details class="section archived-section">
+            <summary>
+              Archived <span class="rollup num">{props.archived.length}</span>
+            </summary>
+            <table class="rows">
+              {props.archived
+                .filter((a) => !props.owner || a.owner === props.owner)
+                .map((a) => (
+                  <tr class="row" data-href={`/e/${a.id}`}>
+                    <td class="c-dot">
+                      <Dot severity={0} />
+                    </td>
+                    <td class="c-name">
+                      <a href={`/e/${a.id}`}>{a.name}</a>
+                    </td>
+                    <td class="c-kind">
+                      {a.category ?? a.kind}
+                      {a.owner && <span class="owner"> · {a.owner}</span>}
+                    </td>
+                  </tr>
+                ))}
+            </table>
+          </details>
+        )}
       </div>
     </>
   );
