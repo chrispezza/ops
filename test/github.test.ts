@@ -221,8 +221,8 @@ describe("github poller", () => {
             nameWithOwner: "clownware/tidy",
             isPrivate: true, // license not applicable
             description: "A tidy private repo",
-            readme: { byteLength: 4000 },
-            claudeMd: { byteLength: 900 },
+            readme: { byteSize: 4000 },
+            claudeMd: { byteSize: 900 },
           }),
         ]),
       ),

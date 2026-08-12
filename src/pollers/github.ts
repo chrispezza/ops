@@ -28,8 +28,8 @@ const QUERY = /* GraphQL */ `
           isPrivate
           description
           licenseInfo { spdxId }
-          readme: object(expression: "HEAD:README.md") { ... on Blob { byteLength } }
-          claudeMd: object(expression: "HEAD:CLAUDE.md") { ... on Blob { byteLength } }
+          readme: object(expression: "HEAD:README.md") { ... on Blob { byteSize } }
+          claudeMd: object(expression: "HEAD:CLAUDE.md") { ... on Blob { byteSize } }
           primaryLanguage { name }
           repositoryTopics(first: 20) { nodes { topic { name } } }
           issues(states: OPEN) { totalCount }
@@ -74,8 +74,8 @@ interface RepoNode {
   isPrivate: boolean;
   description: string | null;
   licenseInfo?: { spdxId: string | null } | null;
-  readme?: { byteLength: number } | null;
-  claudeMd?: { byteLength: number } | null;
+  readme?: { byteSize: number } | null;
+  claudeMd?: { byteSize: number } | null;
   primaryLanguage: { name: string } | null;
   repositoryTopics: { nodes: { topic: { name: string } }[] };
   issues: { totalCount: number };
@@ -293,7 +293,7 @@ export const github: Poller = {
         // repo (license only judged on public repos; CLAUDE.md is the user's
         // own stated convention). valueText names exactly what's missing.
         const docsChecks: [string, boolean][] = [
-          ["README", (repo.readme?.byteLength ?? 0) >= 200],
+          ["README", (repo.readme?.byteSize ?? 0) >= 200],
           ["description", !!repo.description?.trim()],
           ["CLAUDE.md", !!repo.claudeMd],
         ];
