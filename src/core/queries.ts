@@ -232,8 +232,12 @@ export async function findings(
   }
   // Archived entities stay visible here — findings is the audit lens, and the
   // phase-3 archive decision hides them from map/triage only.
+  // magnitude breaks same-severity ties: after a fresh poll everything shares
+  // observed_at, and 54 vulns should sit above 2
   const orderBy =
-    opts.sort === "recent" ? "s.observed_at DESC, s.severity DESC" : "s.severity DESC, s.observed_at DESC";
+    opts.sort === "recent"
+      ? "s.observed_at DESC, s.severity DESC"
+      : "s.severity DESC, s.value_num DESC, s.observed_at DESC";
   const res = await db
     .prepare(
       `SELECT s.*, e.name AS entity_name, e.category AS entity_category, e.archived AS entity_archived

@@ -237,7 +237,7 @@ function Chips(props: { row: TriageRow; now: number }) {
         <>
           {site}
           <Chip label="CI" signal={l["ci.status"]} now={now} render={(s) => (s.value_text === "success" ? "✓" : (s.value_text ?? "?"))} />
-          <Chip label="vulns" signal={l["deps.vuln_count"]} now={now} />
+          <Chip label="vulns" signal={l["deps.vuln_count"]} now={now} render={(s) => String(s.value_num ?? 0)} />
           <Chip label="PRs" signal={l["prs.open"]} now={now} />
           {branches}
           {pushed}

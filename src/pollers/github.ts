@@ -31,11 +31,16 @@ const QUERY = /* GraphQL */ `
           repositoryTopics(first: 20) { nodes { topic { name } } }
           issues(states: OPEN) { totalCount }
           refs(refPrefix: "refs/heads/") { totalCount }
+          vulnerabilityAlerts(states: OPEN, first: 100) {
+            totalCount
+            nodes {
+              securityVulnerability { severity }
+            }
+          }
           pullRequests(states: OPEN, first: 1, orderBy: { field: CREATED_AT, direction: ASC }) {
             totalCount
             nodes { createdAt }
           }
-          vulnerabilityAlerts(states: OPEN) { totalCount }
           defaultBranchRef {
             name
             target {
@@ -70,7 +75,10 @@ interface RepoNode {
   issues: { totalCount: number };
   refs?: { totalCount: number } | null;
   pullRequests: { totalCount: number; nodes?: { createdAt: string }[] };
-  vulnerabilityAlerts: { totalCount: number } | null;
+  vulnerabilityAlerts: {
+    totalCount: number;
+    nodes?: { securityVulnerability: { severity: string } | null }[];
+  } | null;
   defaultBranchRef: {
     name: string;
     target: { oid: string; statusCheckRollup: { state: string } | null } | null;
@@ -213,12 +221,35 @@ export const github: Poller = {
           });
         }
 
+        // Dependabot grades every alert; flatten that into signal severity so
+        // 54 transitive lows stop outranking 2 criticals. critical → act now,
+        // high → plan, moderate/low only → routine.
         const vulns = repo.vulnerabilityAlerts?.totalCount ?? 0;
+        const grades = { critical: 0, high: 0, other: 0 };
+        for (const node of repo.vulnerabilityAlerts?.nodes ?? []) {
+          const g = node.securityVulnerability?.severity?.toLowerCase();
+          if (g === "critical") grades.critical++;
+          else if (g === "high") grades.high++;
+          else grades.other++;
+        }
+        const graded = grades.critical + grades.high + grades.other > 0;
+        const vulnSeverity =
+          vulns === 0 ? 0
+          : !graded ? 2 // grading unavailable (token scope, >100 alerts page) — keep the old conservative middle
+          : grades.critical > 0 ? 3
+          : grades.high > 0 ? 2
+          : 1;
+        const breakdown = [
+          grades.critical > 0 ? `${grades.critical} critical` : "",
+          grades.high > 0 ? `${grades.high} high` : "",
+          grades.other > 0 ? `${grades.other} moderate/low` : "",
+        ].filter(Boolean).join(" · ");
         signals.push({
           entityId: id,
           metric: "deps.vuln_count",
           valueNum: vulns,
-          severity: vulns > 0 ? 2 : 0,
+          valueText: breakdown || undefined,
+          severity: vulnSeverity as 0 | 1 | 2 | 3,
           url: `${repo.url}/security/dependabot`,
           observedAt: now,
           dedupeKey: hourBucket,

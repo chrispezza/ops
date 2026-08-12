@@ -49,7 +49,13 @@ describe("github poller", () => {
             refs: { totalCount: 4 },
             issues: { totalCount: 4 },
             pullRequests: { totalCount: 3 },
-            vulnerabilityAlerts: { totalCount: 2 },
+            vulnerabilityAlerts: {
+              totalCount: 2,
+              nodes: [
+                { securityVulnerability: { severity: "CRITICAL" } },
+                { securityVulnerability: { severity: "LOW" } },
+              ],
+            },
             defaultBranchRef: { target: { oid: "abc123", statusCheckRollup: { state: "FAILURE" } } },
           }),
           repoNode({ name: "untagged", nameWithOwner: "clownware/untagged" }),
@@ -75,7 +81,36 @@ describe("github poller", () => {
 
     const vulns = sig("repo:clownware/gittunes", "deps.vuln_count");
     expect(vulns?.valueNum).toBe(2);
-    expect(vulns?.severity).toBe(2);
+    expect(vulns?.severity).toBe(3); // a critical alert escalates the signal
+    expect(vulns?.valueText).toBe("1 critical · 1 moderate/low");
+
+    // ungraded counts (no nodes) keep the conservative middle severity
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({ nameWithOwner: "clownware/plainvulns", vulnerabilityAlerts: { totalCount: 54 } }),
+        ]),
+      ),
+    );
+    const plain = await github.poll(testEnv, { listEntities: async () => [] });
+    const plainVulns = plain.signals.find((s) => s.metric === "deps.vuln_count");
+    expect(plainVulns?.severity).toBe(2);
+
+    // moderate/low only → routine severity
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/lowvulns",
+            vulnerabilityAlerts: { totalCount: 3, nodes: [{ securityVulnerability: { severity: "MODERATE" } }, { securityVulnerability: { severity: "LOW" } }, { securityVulnerability: { severity: "LOW" } }] },
+          }),
+        ]),
+      ),
+    );
+    const low = await github.poll(testEnv, { listEntities: async () => [] });
+    expect(low.signals.find((s) => s.metric === "deps.vuln_count")?.severity).toBe(1);
 
     // repo without CI emits no ci.status signal at all
     expect(sig("repo:clownware/untagged", "ci.status")).toBeUndefined();
