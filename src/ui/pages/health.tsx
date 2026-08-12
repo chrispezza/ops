@@ -47,7 +47,11 @@ export function HealthPage(props: { health: PollerHealth[]; now: number }) {
           })}
         </table>
       )}
-      <form method="post" action="/health/run">
+      <form
+        method="post"
+        action="/health/run"
+        onsubmit="const b=this.querySelector('button');b.disabled=true;b.textContent='running — takes ~15s…'"
+      >
         <button type="submit">Run all pollers now</button>
       </form>
     </>
