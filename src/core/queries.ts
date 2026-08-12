@@ -179,6 +179,33 @@ export async function getEntity(db: D1Database, id: string): Promise<EntityRow |
   return db.prepare("SELECT * FROM entities WHERE id = ?1").bind(id).first<EntityRow>();
 }
 
+// Numeric state-metric history for trend sparklines: metrics with enough
+// points in the window to draw a line worth reading (issue #5).
+export async function trendSeries(
+  db: D1Database,
+  entityId: string,
+  since: number,
+): Promise<Map<string, { observed_at: number; value: number }[]>> {
+  const res = await db
+    .prepare(
+      `SELECT metric, value_num AS value, observed_at FROM signals
+       WHERE entity_id = ?1 AND period_start IS NULL AND value_num IS NOT NULL AND observed_at >= ?2
+       ORDER BY metric, observed_at`,
+    )
+    .bind(entityId, since)
+    .all<{ metric: string; value: number; observed_at: number }>();
+  const series = new Map<string, { observed_at: number; value: number }[]>();
+  for (const row of res.results) {
+    const list = series.get(row.metric);
+    if (list) list.push(row);
+    else series.set(row.metric, [row]);
+  }
+  for (const [metric, points] of series) {
+    if (points.length < 3) series.delete(metric); // no trend in two points
+  }
+  return series;
+}
+
 export async function signalHistory(
   db: D1Database,
   entityId: string,

@@ -23,38 +23,44 @@ function periodStart(period: string, now: number): number {
 // threshold-crossing signals (sev 2 soft / 4 hard) attributed to the scope.
 // One signal per budget per period (dedupe on period start), overwritten each
 // cycle so it always reflects the current spent-vs-limit state.
+// Period-correct spend for a budget's scope — the single source both the
+// evaluator and the /spend budget bars use, so the bar never approximates.
+export async function budgetSpent(db: D1Database, b: BudgetRow, now: number): Promise<number> {
+  const since = periodStart(b.period, now);
+  if (b.scope === "*") {
+    const row = await db
+      .prepare("SELECT SUM(value_num) AS total FROM signals WHERE metric = ?1 AND period_start >= ?2")
+      .bind(b.metric, since)
+      .first<{ total: number | null }>();
+    return row?.total ?? 0;
+  }
+  if (b.scope.includes(":")) {
+    const row = await db
+      .prepare(
+        "SELECT SUM(value_num) AS total FROM signals WHERE metric = ?1 AND period_start >= ?2 AND entity_id = ?3",
+      )
+      .bind(b.metric, since, b.scope)
+      .first<{ total: number | null }>();
+    return row?.total ?? 0;
+  }
+  const row = await db
+    .prepare(
+      `SELECT SUM(s.value_num) AS total FROM signals s
+       JOIN entities e ON e.id = s.entity_id
+       WHERE s.metric = ?1 AND s.period_start >= ?2 AND e.kind = ?3`,
+    )
+    .bind(b.metric, since, b.scope)
+    .first<{ total: number | null }>();
+  return row?.total ?? 0;
+}
+
 export async function evaluateBudgets(db: D1Database, now: number): Promise<void> {
   const budgets = (await db.prepare("SELECT * FROM budgets").all<BudgetRow>()).results;
   const signals: SignalInsert[] = [];
 
   for (const b of budgets) {
     const since = periodStart(b.period, now);
-    let spent: number;
-    if (b.scope === "*") {
-      const row = await db
-        .prepare("SELECT SUM(value_num) AS total FROM signals WHERE metric = ?1 AND period_start >= ?2")
-        .bind(b.metric, since)
-        .first<{ total: number | null }>();
-      spent = row?.total ?? 0;
-    } else if (b.scope.includes(":")) {
-      const row = await db
-        .prepare(
-          "SELECT SUM(value_num) AS total FROM signals WHERE metric = ?1 AND period_start >= ?2 AND entity_id = ?3",
-        )
-        .bind(b.metric, since, b.scope)
-        .first<{ total: number | null }>();
-      spent = row?.total ?? 0;
-    } else {
-      const row = await db
-        .prepare(
-          `SELECT SUM(s.value_num) AS total FROM signals s
-           JOIN entities e ON e.id = s.entity_id
-           WHERE s.metric = ?1 AND s.period_start >= ?2 AND e.kind = ?3`,
-        )
-        .bind(b.metric, since, b.scope)
-        .first<{ total: number | null }>();
-      spent = row?.total ?? 0;
-    }
+    const spent = await budgetSpent(db, b, now);
 
     const severity = spent >= b.hard_limit ? 4 : spent >= b.soft_limit ? 2 : 0;
     let entityId = b.scope;

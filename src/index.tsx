@@ -3,12 +3,14 @@ import { EXPECTED_METRICS, TRIAGE_WEIGHTS, type TriageWeights } from "./config";
 import {
   type BalanceEntry,
   type BudgetRow,
+  budgetSpent,
   deriveBalances,
   detectSpendAnomalies,
   emitHygieneSignals,
   evaluateBudgets,
 } from "./core/derive";
 import { notifyNewAlerts } from "./core/notify";
+import { compactSignals } from "./core/retention";
 import {
   archivedEntities,
   entitiesWithLatest,
@@ -23,6 +25,7 @@ import {
   setArchived,
   signalHistory,
   spendByEntity,
+  trendSeries,
   usageSums,
 } from "./core/queries";
 import { runPollers } from "./core/runner";
@@ -169,10 +172,13 @@ app.get("/e/*", async (c) => {
       points: await intervalSums(c.env.DB, id, metric, now - windowDays * DAY),
     })),
   );
-  const health = await pollerHealth(c.env.DB);
+  const [health, trends] = await Promise.all([
+    pollerHealth(c.env.DB),
+    trendSeries(c.env.DB, id, now - windowDays * DAY),
+  ]);
   return c.html(
     <Layout path="/e" title={entity.name} health={health} now={now}>
-      <EntityPage entity={entity} latest={latest} history={history} intervalSeries={intervalSeries} now={now} />
+      <EntityPage entity={entity} latest={latest} history={history} intervalSeries={intervalSeries} trends={trends} now={now} />
     </Layout>,
   );
 });
@@ -216,12 +222,16 @@ app.get("/spend", async (c) => {
   const windowDays = window === "mtd" ? Math.floor((today - monthStart) / DAY) + 1 : window === "90d" ? 90 : 30;
   const since = Math.min(today - (windowDays - 1) * DAY, monthStart);
 
-  const [spend, budgets, health, balances] = await Promise.all([
+  const [spend, budgetRows, health, balances] = await Promise.all([
     spendByEntity(c.env.DB, since),
     c.env.DB.prepare("SELECT * FROM budgets").all<BudgetRow>().then((r) => r.results),
     pollerHealth(c.env.DB),
     latestByMetric(c.env.DB, "balance.usd"),
   ]);
+  // bars share the evaluator's period-correct math — no MTD approximation
+  const budgets = await Promise.all(
+    budgetRows.map(async (b) => ({ ...b, spent: await budgetSpent(c.env.DB, b, now) })),
+  );
 
   // balance-only vendors (no spend API, e.g. xAI) still get a spend row
   for (const id of balances.keys()) {
@@ -371,7 +381,9 @@ export default {
   fetch: app.fetch,
   async scheduled(event, env, _ctx) {
     const now = epochNow();
-    await runPollers(env, event.cron === DAILY_CRON ? "daily" : "hourly", { now });
+    const isDaily = event.cron === DAILY_CRON;
+    await runPollers(env, isDaily ? "daily" : "hourly", { now });
     await derivePass(env, now);
+    if (isDaily) await compactSignals(env.DB, now); // retention sweep rides the daily cron
   },
 } satisfies ExportedHandler<Env>;

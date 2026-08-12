@@ -48,7 +48,7 @@ export function Sparkline(props: { points: { period_start: number; total: number
 
 export function SpendPage(props: {
   entities: SpendEntity[];
-  budgets: BudgetRow[];
+  budgets: (BudgetRow & { spent: number })[]; // period-correct, from budgetSpent()
   orgMtd: number;
   windowDays: number;
   window: "30d" | "90d" | "mtd";
@@ -61,7 +61,7 @@ export function SpendPage(props: {
         <h2>Month to date</h2>
         <p class="mtd num">${orgMtd.toFixed(2)}</p>
         {budgets.map((b) => (
-          <BudgetBar budget={b} spent={spentForScope(b, props.entities, orgMtd)} />
+          <BudgetBar budget={b} spent={b.spent} />
         ))}
         {budgets.length === 0 && (
           <p class="hint">
@@ -120,12 +120,6 @@ export function SpendPage(props: {
       </section>
     </>
   );
-}
-
-function spentForScope(b: BudgetRow, entities: SpendEntity[], orgMtd: number): number {
-  if (b.scope === "*") return orgMtd;
-  const entity = entities.find((e) => e.id === b.scope);
-  return entity?.mtd ?? orgMtd;
 }
 
 // Horizontal bar with soft/hard limit ticks (ux §2.3).

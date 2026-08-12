@@ -5,11 +5,32 @@ import { Dot, formatSignalValue, timeAgo } from "../components";
 
 const HISTORY_PAGE = 50;
 
+// Minimal min-max normalized polyline — the archive turned into a glance.
+export function TrendSpark(props: { points: { observed_at: number; value: number }[] }) {
+  const { points } = props;
+  const w = 96;
+  const h = 14;
+  const values = points.map((p) => p.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const step = points.length > 1 ? w / (points.length - 1) : 0;
+  const path = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(h - 1 - ((p.value - min) / span) * (h - 2)).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg class="trend" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="30d trend">
+      <path d={path} fill="none" stroke-width="1" />
+    </svg>
+  );
+}
+
 export function EntityPage(props: {
   entity: EntityRow;
   latest: SignalRow[];
   history: SignalRow[];
   intervalSeries: { metric: string; points: { period_start: number; total: number }[] }[];
+  trends: Map<string, { observed_at: number; value: number }[]>;
   now: number;
 }) {
   const { entity: e, now } = props;
@@ -75,6 +96,9 @@ export function EntityPage(props: {
                 </td>
                 <td class="num" title={s.value_num != null && s.value_text ? s.value_text : undefined}>
                   {formatSignalValue(s, now)}
+                </td>
+                <td class="c-trend">
+                  {props.trends.has(s.metric) && <TrendSpark points={props.trends.get(s.metric) ?? []} />}
                 </td>
                 <td class="c-kind">{timeAgo(s.observed_at, now)} ago</td>
                 <td class="c-links">{s.url && <a href={s.url}>↗</a>}</td>

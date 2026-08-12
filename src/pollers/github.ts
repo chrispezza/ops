@@ -13,10 +13,13 @@ const TOPIC_CATEGORY: Record<string, string> = {
   client: "client_project",
 };
 
+// 25 repos/page: GitHub 502s expensive GraphQL queries, and this one carries
+// vuln nodes + blob lookups + CI rollups per repo — smaller pages keep each
+// request under the cost ceiling.
 const QUERY = /* GraphQL */ `
   query ($owner: String!, $cursor: String) {
     repositoryOwner(login: $owner) {
-      repositories(first: 100, after: $cursor, ownerAffiliations: OWNER, isFork: false) {
+      repositories(first: 25, after: $cursor, ownerAffiliations: OWNER, isFork: false) {
         pageInfo { hasNextPage endCursor }
         nodes {
           name
@@ -34,7 +37,7 @@ const QUERY = /* GraphQL */ `
           repositoryTopics(first: 20) { nodes { topic { name } } }
           issues(states: OPEN) { totalCount }
           refs(refPrefix: "refs/heads/") { totalCount }
-          vulnerabilityAlerts(states: OPEN, first: 100) {
+          vulnerabilityAlerts(states: OPEN, first: 50) {
             totalCount
             nodes {
               securityVulnerability { severity }
@@ -107,16 +110,21 @@ interface GraphQLPage {
 async function* fetchRepos(pat: string, owner: string): AsyncGenerator<RepoNode> {
   let cursor: string | null = null;
   do {
-    const res = await fetch("https://api.github.com/graphql", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${pat}`,
-        "content-type": "application/json",
-        "user-agent": "ops-dashboard",
-      },
-      body: JSON.stringify({ query: QUERY, variables: { owner, cursor } }),
-    });
-    if (!res.ok) throw new Error(`github: HTTP ${res.status} for owner ${owner}`);
+    let res: Response | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch("https://api.github.com/graphql", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${pat}`,
+          "content-type": "application/json",
+          "user-agent": "ops-dashboard",
+        },
+        body: JSON.stringify({ query: QUERY, variables: { owner, cursor } }),
+      });
+      if (res.status < 500) break; // 5xx (incl. GraphQL-cost 502s) gets one retry
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
+    if (!res || !res.ok) throw new Error(`github: HTTP ${res?.status} for owner ${owner}`);
     const page = (await res.json()) as GraphQLPage;
     const conn = page.data?.repositoryOwner?.repositories;
     // Partial errors (e.g. a field the token can't read) still carry data —
