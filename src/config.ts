@@ -45,6 +45,8 @@ export const METRIC_LABELS: Record<string, string> = {
   "poller.status": "poller status",
   "hygiene.uncategorized": "category tag",
   "hygiene.inactive": "activity",
+  "manifest.description": "manifest description",
+  "manifest.skill_count": "skills",
 };
 
 export function labelForMetric(metric: string): string {
@@ -73,6 +75,7 @@ export const DOMAIN_LABELS: Record<string, string> = {
   budget: "Budget",
   hygiene: "Hygiene",
   poller: "Poller",
+  manifest: "Manifest",
 };
 
 // Triage score — spec §4.1. Defaults here; overridable via /settings (stored in D1).

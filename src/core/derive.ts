@@ -179,9 +179,14 @@ export async function emitHygieneSignals(
   const categories = Object.keys(expected);
   if (categories.length === 0) return;
 
+  // Expected metrics describe the REPO portfolio buckets — plugin/skill/vendor
+  // entities get their hygiene from their own pollers, not category expectations
+  // (40 skills flagged "usage.invocations missing" would be noise, not signal).
   const placeholders = categories.map((_, i) => `?${i + 1}`).join(", ");
   const entities = await db
-    .prepare(`SELECT id, category FROM entities WHERE archived = 0 AND category IN (${placeholders})`)
+    .prepare(
+      `SELECT id, category FROM entities WHERE archived = 0 AND kind = 'repo' AND category IN (${placeholders})`,
+    )
     .bind(...categories)
     .all<{ id: string; category: string }>();
 

@@ -55,7 +55,9 @@ export function MapPage(props: {
         {SECTIONS.map((s) => (
           <Section
             title={s.title}
-            rows={rows.filter((r) => r.view.category === s.category)}
+            // individual skills would flood the one-screen map: repos and
+            // plugins get rows, skills roll up into the section header
+            rows={rows.filter((r) => r.view.category === s.category && r.view.kind !== "skill")}
             now={now}
             hint={`No ${s.title.toLowerCase()} yet — tag repos with the matching topic.`}
             rollup={s.category === "plugin_skill" ? skillsRollup(rows) : undefined}
@@ -130,11 +132,17 @@ function uptimeHint(category: string, rows: TriageRow[]): string | undefined {
   return "repos with a Website field on GitHub get uptime monitoring";
 }
 
-// ux §2.1: skills section header rolls up total 30d invocations.
+// ux §2.1: skills section header rolls up skill inventory + 30d invocations.
 function skillsRollup(rows: TriageRow[]): string | undefined {
+  const parts: string[] = [];
+  const skills = rows.filter((r) => r.view.category === "plugin_skill" && r.view.kind === "skill");
+  if (skills.length > 0) {
+    const flagged = skills.filter((r) => r.view.maxSeverity >= 1).length;
+    parts.push(`${skills.length} skills${flagged > 0 ? ` (${flagged} flagged)` : ""}`);
+  }
   const sums = rows.filter((r) => r.view.category === "plugin_skill" && r.usage30d != null);
-  if (sums.length === 0) return undefined;
-  return `Σ ${sums.reduce((total, r) => total + (r.usage30d ?? 0), 0)} invocations 30d`;
+  if (sums.length > 0) parts.push(`Σ ${sums.reduce((total, r) => total + (r.usage30d ?? 0), 0)} invocations 30d`);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 function Section(props: {
@@ -240,6 +248,14 @@ function Chips(props: { row: TriageRow; now: number }) {
         </>
       );
     case "plugin_skill":
+      if (e.kind === "plugin") {
+        return (
+          <>
+            <Chip label="skills" signal={l["manifest.skill_count"]} now={now} />
+            <Chip label="manifest" signal={l["manifest.description"]} now={now} />
+          </>
+        );
+      }
       return (
         <>
           {/* interval metric: 30d SUM, never the latest row (spec §2.2) */}

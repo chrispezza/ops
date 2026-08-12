@@ -53,9 +53,11 @@ export function computeScore(
   return { total: parts.reduce((sum, p) => sum + p.points, 0), parts };
 }
 
-// Kinds with usage semantics get the zero-usage bonus; everything else passes null.
+// Kinds with usage semantics get the zero-usage bonus; everything else passes
+// null. Scoped to repos until real skill-usage telemetry exists — otherwise
+// every marketplace skill would collect the bonus for data nobody emits yet.
 export function hasUsageSemantics(view: EntityView): boolean {
-  return view.category === "plugin_skill";
+  return view.category === "plugin_skill" && view.kind === "repo";
 }
 
 // Staleness means "no real activity", not "not recently polled" — last_seen_at
