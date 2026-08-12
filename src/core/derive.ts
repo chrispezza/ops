@@ -147,9 +147,12 @@ export async function emitHygieneSignals(
         .prepare("SELECT 1 FROM signals WHERE entity_id = ?1 AND metric = ?2 LIMIT 1")
         .bind(entity.id, metric)
         .first();
+      // One hygiene metric PER expected metric — packing them under a single
+      // metric name would let a resolved flag shadow a missing one in every
+      // latest-per-metric query.
       signals.push({
         entityId: entity.id,
-        metric: "hygiene.missing_metric",
+        metric: `hygiene.missing.${metric}`,
         valueText: metric,
         severity: present ? 0 : 1,
         observedAt: now,
@@ -157,5 +160,49 @@ export async function emitHygieneSignals(
       });
     }
   }
+
+  // Resolve hygiene flags whose metric is no longer expected (config changed,
+  // category changed) — otherwise a stale severity-1 row stays "latest" forever.
+  // Matches the legacy packed name too, sweeping old deployments clean.
+  const existing = await db
+    .prepare(
+      `SELECT s.entity_id, s.metric, s.dedupe_key, e.category FROM signals s
+       JOIN entities e ON e.id = s.entity_id
+       WHERE (s.metric LIKE 'hygiene.missing.%' OR s.metric = 'hygiene.missing_metric') AND s.severity > 0`,
+    )
+    .all<{ entity_id: string; metric: string; dedupe_key: string; category: string | null }>();
+  for (const row of existing.results) {
+    const isLegacy = row.metric === "hygiene.missing_metric";
+    const stillExpected = !isLegacy && (expected[row.category ?? ""] ?? []).includes(row.dedupe_key);
+    if (!stillExpected) {
+      signals.push({
+        entityId: row.entity_id,
+        metric: row.metric,
+        valueText: row.dedupe_key,
+        severity: 0,
+        observedAt: now,
+        dedupeKey: row.dedupe_key,
+      });
+    }
+  }
+
+  // Spec §2.4: untagged repos are themselves a hygiene finding — queryable on
+  // /findings, not just visible as the map's warning bucket.
+  const knownCategories = new Set(categories);
+  const repos = await db
+    .prepare("SELECT id, category FROM entities WHERE archived = 0 AND kind = 'repo'")
+    .all<{ id: string; category: string | null }>();
+  for (const repo of repos.results) {
+    const categorized = repo.category != null && knownCategories.has(repo.category);
+    signals.push({
+      entityId: repo.id,
+      metric: "hygiene.uncategorized",
+      valueText: repo.category ?? "no topic",
+      severity: categorized ? 0 : 1,
+      observedAt: now,
+      dedupeKey: "category",
+    });
+  }
+
   await insertSignals(db, "core", signals);
 }

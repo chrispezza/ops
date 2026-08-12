@@ -50,6 +50,7 @@ export function SpendPage(props: {
   budgets: BudgetRow[];
   orgMtd: number;
   windowDays: number;
+  window: "30d" | "90d" | "mtd";
   now: number;
 }) {
   const { budgets, orgMtd, now } = props;
@@ -72,10 +73,10 @@ export function SpendPage(props: {
         <h2>
           By entity
           <span class="rollup">
-            {[30, 90].map((d) => (
-              <a href={`/spend?window=${d}`} class={props.windowDays === d ? "active" : ""}>
+            {(["30d", "90d", "mtd"] as const).map((w) => (
+              <a href={`/spend?window=${w}`} class={props.window === w ? "active" : ""}>
                 {" "}
-                {d}d
+                {w}
               </a>
             ))}
           </span>
@@ -127,7 +128,7 @@ function BudgetBar(props: { budget: BudgetRow; spent: number }) {
   return (
     <div class="budget">
       <span class="budget-label">
-        {b.scope} <span class="num">${spent.toFixed(2)}</span> / ${b.soft_limit} soft · ${b.hard_limit} hard ({b.period})
+        {b.scope === "*" ? "all entities" : b.scope} <span class="num">${spent.toFixed(2)}</span> / ${b.soft_limit} soft · ${b.hard_limit} hard ({b.period})
       </span>
       <div class="budget-bar">
         <div class="budget-fill" data-sev={sev} style={`width:${pct(spent)}`} />

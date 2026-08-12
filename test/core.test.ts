@@ -160,11 +160,11 @@ describe("hygiene pass", () => {
     );
 
     await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW);
-    let hygiene = (await latestSignals(env.DB, "repo:site")).filter(
-      (s) => s.metric === "hygiene.missing_metric",
+    let hygiene = (await latestSignals(env.DB, "repo:site")).filter((s) =>
+      s.metric.startsWith("hygiene.missing."),
     );
     expect(hygiene).toHaveLength(1);
-    expect(hygiene[0]?.value_text).toBe("lhci.performance");
+    expect(hygiene[0]?.metric).toBe("hygiene.missing.lhci.performance");
     expect(hygiene[0]?.severity).toBe(1);
 
     // metric shows up → same row resolves to severity 0, no new rows
@@ -172,25 +172,59 @@ describe("hygiene pass", () => {
       { entityId: "repo:site", metric: "lhci.performance", valueNum: 98, observedAt: NOW + 60, dedupeKey: "run-1" },
     ]);
     await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW + 120);
-    hygiene = (await latestSignals(env.DB, "repo:site")).filter(
-      (s) => s.metric === "hygiene.missing_metric",
-    );
+    hygiene = (await latestSignals(env.DB, "repo:site")).filter((s) => s.metric.startsWith("hygiene.missing."));
     expect(hygiene).toHaveLength(1);
     expect(hygiene[0]?.severity).toBe(0);
   });
 
-  it("ignores archived and uncategorized entities", async () => {
+  it("flags untagged repos as hygiene findings and skips archived entities", async () => {
     await upsertEntities(
       env.DB,
       [
         { id: "repo:untagged", kind: "repo", name: "untagged" },
         { id: "repo:old", kind: "repo", category: "web_app", name: "old" },
+        { id: "vendor_api:x", kind: "vendor_api", name: "x" }, // non-repo: never flagged
       ],
       NOW,
     );
     await env.DB.prepare("UPDATE entities SET archived = 1 WHERE id = 'repo:old'").run();
 
     await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW);
-    expect(await count("signals")).toBe(0);
+    const uncategorized = (await latestSignals(env.DB, "repo:untagged")).find(
+      (s) => s.metric === "hygiene.uncategorized",
+    );
+    expect(uncategorized?.severity).toBe(1);
+    expect(await latestSignals(env.DB, "repo:old")).toHaveLength(0); // archived: nothing emitted
+    expect(await latestSignals(env.DB, "vendor_api:x")).toHaveLength(0);
+
+    // tagging the repo resolves the same row in place
+    await upsertEntities(env.DB, [{ id: "repo:untagged", kind: "repo", category: "web_app", name: "untagged" }], NOW);
+    await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW + 60);
+    const resolved = (await latestSignals(env.DB, "repo:untagged")).filter(
+      (s) => s.metric === "hygiene.uncategorized",
+    );
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]?.severity).toBe(0);
+  });
+
+  it("resolves hygiene flags for metrics that are no longer expected", async () => {
+    await upsertEntities(env.DB, [{ id: "repo:skill", kind: "repo", category: "plugin_skill", name: "skill" }], NOW);
+    // simulate a flag emitted under an older config that expected manifest.description
+    await insertSignals(env.DB, "core", [
+      {
+        entityId: "repo:skill",
+        metric: "hygiene.missing_metric",
+        valueText: "manifest.description",
+        severity: 1,
+        observedAt: NOW,
+        dedupeKey: "manifest.description",
+      },
+    ]);
+
+    await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW + 60);
+    const flag = (await latestSignals(env.DB, "repo:skill")).find(
+      (s) => s.metric === "hygiene.missing_metric" && s.dedupe_key === "manifest.description",
+    );
+    expect(flag?.severity).toBe(0); // resolved, not left stale forever
   });
 });

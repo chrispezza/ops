@@ -54,7 +54,7 @@ export async function entitiesWithLatest(db: D1Database): Promise<EntityView[]> 
          SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id, metric ORDER BY observed_at DESC, id DESC) AS rn
          FROM signals
        ) s ON s.entity_id = e.id AND s.rn = 1
-       WHERE e.archived = 0 AND e.kind != 'poller'
+       WHERE e.archived = 0 AND e.kind NOT IN ('poller', 'budget')
        ORDER BY e.name`,
     )
     .all<Record<string, unknown>>();
@@ -176,6 +176,7 @@ export async function usageSums(db: D1Database, metric: string, since: number): 
 export interface FindingRow extends SignalRow {
   entity_name: string;
   entity_category: string | null;
+  entity_archived: number;
 }
 
 // The cross-cutting audit lens (spec §4.4): latest signals across every entity
@@ -183,7 +184,7 @@ export interface FindingRow extends SignalRow {
 // severity. A filter, not a domain — new audit sources appear with no changes.
 export async function findings(
   db: D1Database,
-  opts: { minSeverity: number; domain?: string; category?: string },
+  opts: { minSeverity: number; domain?: string; category?: string; sort?: string },
 ): Promise<FindingRow[]> {
   const conditions = ["(s.severity >= ?1 OR s.metric LIKE 'audit.%' OR (s.metric LIKE 'hygiene.%' AND s.severity > 0))"];
   const params: (string | number)[] = [opts.minSeverity];
@@ -195,16 +196,20 @@ export async function findings(
     params.push(opts.category);
     conditions.push(`e.category = ?${params.length}`);
   }
+  // Archived entities stay visible here — findings is the audit lens, and the
+  // phase-3 archive decision hides them from map/triage only.
+  const orderBy =
+    opts.sort === "recent" ? "s.observed_at DESC, s.severity DESC" : "s.severity DESC, s.observed_at DESC";
   const res = await db
     .prepare(
-      `SELECT s.*, e.name AS entity_name, e.category AS entity_category
+      `SELECT s.*, e.name AS entity_name, e.category AS entity_category, e.archived AS entity_archived
        FROM (
          SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id, metric ORDER BY observed_at DESC, id DESC) AS rn
          FROM signals
        ) s
        JOIN entities e ON e.id = s.entity_id
-       WHERE s.rn = 1 AND e.archived = 0 AND ${conditions.join(" AND ")}
-       ORDER BY s.severity DESC, s.observed_at DESC`,
+       WHERE s.rn = 1 AND ${conditions.join(" AND ")}
+       ORDER BY ${orderBy}`,
     )
     .bind(...params)
     .all<FindingRow>();

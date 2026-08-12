@@ -1,5 +1,5 @@
 import type { EntityRow, SignalRow } from "../../core/queries";
-import { Dot, timeAgo } from "../components";
+import { Dot, formatSignalValue, timeAgo } from "../components";
 
 const HISTORY_PAGE = 50;
 
@@ -47,7 +47,9 @@ export function EntityPage(props: {
                   <Dot severity={s.severity} />
                 </td>
                 <td class="c-name">{s.metric}</td>
-                <td class="num">{s.value_num ?? s.value_text ?? "—"}</td>
+                <td class="num" title={s.value_num != null && s.value_text ? s.value_text : undefined}>
+                  {formatSignalValue(s, now)}
+                </td>
                 <td class="c-kind">{timeAgo(s.observed_at, now)} ago</td>
                 <td class="c-links">{s.url && <a href={s.url}>↗</a>}</td>
               </tr>
@@ -92,7 +94,7 @@ export function HistoryRows(props: { entityId: string; history: SignalRow[]; off
             </td>
             <td class="c-kind">{new Date(s.observed_at * 1000).toISOString().replace("T", " ").slice(0, 16)}</td>
             <td class="c-name">{s.metric}</td>
-            <td class="num">{s.value_num ?? s.value_text ?? ""}</td>
+            <td class="num">{formatSignalValue(s, props.now)}</td>
             <td class="c-kind">{s.source}</td>
             <td class="c-links">{s.url && <a href={s.url}>↗</a>}</td>
           </tr>

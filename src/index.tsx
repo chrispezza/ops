@@ -44,7 +44,20 @@ async function scoredViews(db: D1Database, now: number): Promise<TriageRow[]> {
   return views.map((view) => ({
     view,
     score: computeScore(view, now, hasUsageSemantics(view) ? (usage.get(view.id) ?? 0) : null, weights ?? TRIAGE_WEIGHTS),
+    // 30d SUM for the map chip (spec §2.2: interval metrics aggregate, never "latest")
+    usage30d: hasUsageSemantics(view) ? (usage.get(view.id) ?? null) : null,
   }));
+}
+
+function sortRows(rows: TriageRow[], sort: string, now: number): TriageRow[] {
+  switch (sort) {
+    case "name":
+      return rows.sort((a, b) => a.view.name.localeCompare(b.view.name));
+    case "stale":
+      return rows.sort((a, b) => a.view.last_seen_at - b.view.last_seen_at);
+    default:
+      return rows.sort((a, b) => b.score.total - a.score.total);
+  }
 }
 
 // Spec §3: derived signals run after every poll cycle.
@@ -73,14 +86,18 @@ app.get("/triage", async (c) => {
     category: c.req.query("category") || undefined,
     minSeverity: Number(c.req.query("min_severity") ?? 0),
     q: c.req.query("q") || undefined,
+    sort: c.req.query("sort") || undefined,
   };
   const [rows, health] = await Promise.all([scoredViews(c.env.DB, now), pollerHealth(c.env.DB)]);
-  const filtered = rows
-    .filter((r) => !filters.kind || r.view.kind === filters.kind)
-    .filter((r) => !filters.category || r.view.category === filters.category)
-    .filter((r) => r.view.maxSeverity >= (filters.minSeverity ?? 0))
-    .filter((r) => !filters.q || r.view.name.toLowerCase().includes(filters.q.toLowerCase()))
-    .sort((a, b) => b.score.total - a.score.total);
+  const filtered = sortRows(
+    rows
+      .filter((r) => !filters.kind || r.view.kind === filters.kind)
+      .filter((r) => !filters.category || r.view.category === filters.category)
+      .filter((r) => r.view.maxSeverity >= (filters.minSeverity ?? 0))
+      .filter((r) => !filters.q || r.view.name.toLowerCase().includes(filters.q.toLowerCase())),
+    filters.sort ?? "score",
+    now,
+  );
   return c.html(
     <Layout path="/triage" title="Triage" health={health} now={now}>
       <TriagePage rows={filtered} filters={filters} now={now} />
@@ -136,6 +153,7 @@ app.get("/findings", async (c) => {
     domain: c.req.query("domain") || undefined,
     category: c.req.query("category") || undefined,
     group: c.req.query("group") || undefined,
+    sort: c.req.query("sort") || undefined,
   };
   const [rows, health] = await Promise.all([findings(c.env.DB, filters), pollerHealth(c.env.DB)]);
   return c.html(
@@ -149,11 +167,13 @@ app.post("/ingest", handleIngest);
 
 app.get("/spend", async (c) => {
   const now = epochNow();
-  const windowDays = Number(c.req.query("window") ?? 30);
   const monthStart = Math.floor(
     Date.UTC(new Date(now * 1000).getUTCFullYear(), new Date(now * 1000).getUTCMonth(), 1) / 1000,
   );
   const today = now - (now % DAY);
+  const windowParam = c.req.query("window") ?? "30d";
+  const window = windowParam === "90d" ? ("90d" as const) : windowParam === "mtd" ? ("mtd" as const) : ("30d" as const);
+  const windowDays = window === "mtd" ? Math.floor((today - monthStart) / DAY) + 1 : window === "90d" ? 90 : 30;
   const since = Math.min(today - (windowDays - 1) * DAY, monthStart);
 
   const [spend, budgets, health] = await Promise.all([
@@ -177,10 +197,14 @@ app.get("/spend", async (c) => {
 
   return c.html(
     <Layout path="/spend" title="Spend" health={health} now={now}>
-      <SpendPage entities={entities} budgets={budgets} orgMtd={orgMtd} windowDays={windowDays} now={now} />
+      <SpendPage entities={entities} budgets={budgets} orgMtd={orgMtd} windowDays={windowDays} window={window} now={now} />
     </Layout>,
   );
 });
+
+const SETTINGS_ERRORS: Record<string, string> = {
+  budget: "Budget not saved: scope is required and hard limit must be ≥ soft limit ≥ 0.",
+};
 
 app.get("/settings", async (c) => {
   const now = epochNow();
@@ -189,9 +213,10 @@ app.get("/settings", async (c) => {
     getSetting<TriageWeights>(c.env.DB, "triage_weights"),
     pollerHealth(c.env.DB),
   ]);
+  const error = SETTINGS_ERRORS[c.req.query("err") ?? ""];
   return c.html(
     <Layout path="/settings" title="Settings" health={health} now={now}>
-      <SettingsPage budgets={budgets} weights={weights ?? TRIAGE_WEIGHTS} />
+      <SettingsPage budgets={budgets} weights={weights ?? TRIAGE_WEIGHTS} error={error} />
     </Layout>,
   );
 });
@@ -202,14 +227,15 @@ app.post("/settings/budgets", async (c) => {
   const period = form.get("period") === "day" ? "day" : "month";
   const soft = Number(form.get("soft_limit"));
   const hard = Number(form.get("hard_limit"));
-  if (scope && Number.isFinite(soft) && Number.isFinite(hard) && soft >= 0 && hard >= soft) {
-    await c.env.DB.prepare(
-      "INSERT INTO budgets (scope, metric, period, soft_limit, hard_limit) VALUES (?1, 'spend.usd', ?2, ?3, ?4)",
-    )
-      .bind(scope, period, soft, hard)
-      .run();
-    await evaluateBudgets(c.env.DB, epochNow());
+  if (!scope || !Number.isFinite(soft) || !Number.isFinite(hard) || soft < 0 || hard < soft) {
+    return c.redirect("/settings?err=budget");
   }
+  await c.env.DB.prepare(
+    "INSERT INTO budgets (scope, metric, period, soft_limit, hard_limit) VALUES (?1, 'spend.usd', ?2, ?3, ?4)",
+  )
+    .bind(scope, period, soft, hard)
+    .run();
+  await evaluateBudgets(c.env.DB, epochNow());
   return c.redirect("/settings");
 });
 

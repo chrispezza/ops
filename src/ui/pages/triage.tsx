@@ -5,6 +5,7 @@ import { Chip, Dot, newIssueUrl } from "../components";
 export interface TriageRow {
   view: EntityView;
   score: Score;
+  usage30d: number | null; // 30d invocation SUM for usage-kinds; null = no data / not applicable
 }
 
 export interface TriageFilters {
@@ -12,6 +13,17 @@ export interface TriageFilters {
   category?: string;
   minSeverity?: number;
   q?: string;
+  sort?: string;
+}
+
+function sortHref(f: TriageFilters, sort: string): string {
+  const params = new URLSearchParams();
+  if (f.q) params.set("q", f.q);
+  if (f.kind) params.set("kind", f.kind);
+  if (f.category) params.set("category", f.category);
+  if (f.minSeverity) params.set("min_severity", String(f.minSeverity));
+  params.set("sort", sort);
+  return `/triage?${params.toString()}`;
 }
 
 // The daily driver: the map flattened and sorted by pain (ux §2.2).
@@ -22,7 +34,7 @@ export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; n
         <input type="search" name="q" placeholder="filter… ( / )" value={props.filters.q ?? ""} />
         <select name="category">
           <option value="">all categories</option>
-          {["static_site", "web_app", "plugin_skill"].map((c) => (
+          {["static_site", "web_app", "plugin_skill", "vendor_api"].map((c) => (
             <option value={c} selected={props.filters.category === c}>
               {c}
             </option>
@@ -37,12 +49,13 @@ export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; n
         </select>
         <button type="submit">apply</button>
       </form>
-      <TriageTable rows={props.rows} now={props.now} />
+      <TriageTable rows={props.rows} filters={props.filters} now={props.now} />
     </>
   );
 }
 
-export function TriageTable(props: { rows: TriageRow[]; now: number }) {
+export function TriageTable(props: { rows: TriageRow[]; filters: TriageFilters; now: number }) {
+  const sort = props.filters.sort ?? "score";
   if (props.rows.length === 0) {
     return (
       <div id="triage-table">
@@ -54,11 +67,24 @@ export function TriageTable(props: { rows: TriageRow[]; now: number }) {
     <table class="rows" id="triage-table">
       <tr>
         <th />
-        <th>entity</th>
+        <th>
+          <a class={`sort ${sort === "name" ? "active" : ""}`} href={sortHref(props.filters, "name")}>
+            entity
+          </a>
+        </th>
         <th>kind</th>
         <th>top signal</th>
         <th>why</th>
-        <th class="num">score</th>
+        <th class="num">
+          <a class={`sort ${sort === "score" ? "active" : ""}`} href={sortHref(props.filters, "score")}>
+            score
+          </a>
+        </th>
+        <th class="num">
+          <a class={`sort ${sort === "stale" ? "active" : ""}`} href={sortHref(props.filters, "stale")}>
+            stale
+          </a>
+        </th>
         <th />
       </tr>
       {props.rows.map((r) => (
@@ -73,8 +99,9 @@ function Row(props: { row: TriageRow; now: number }) {
   const worst = Object.values(e.latest)
     .filter((s) => s.severity > 0)
     .sort((a, b) => b.severity - a.severity)[0];
+  const staleDays = Math.floor((props.now - e.last_seen_at) / 86_400);
   return (
-    <tr class="row">
+    <tr class="row" data-href={`/e/${e.id}`}>
       <td class="c-dot">
         <Dot severity={e.maxSeverity} />
       </td>
@@ -97,9 +124,10 @@ function Row(props: { row: TriageRow; now: number }) {
         </details>
       </td>
       <td class="num">{score.total}</td>
+      <td class="num c-kind">{staleDays > 0 ? `${staleDays}d` : ""}</td>
       <td class="c-links">
         {e.source_url && <a href={e.source_url}>↗</a>}
-        {e.source_url && <a href={newIssueUrl(e.source_url)}>+issue</a>}
+        {e.kind === "repo" && e.source_url && <a href={newIssueUrl(e.source_url)}>+issue</a>}
       </td>
     </tr>
   );

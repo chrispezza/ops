@@ -1,10 +1,13 @@
 // Weights and category maps are data, not code paths (spec §2.4, §4.1).
 
 // Expected metrics per category: absence becomes a queryable hygiene signal.
+// Only metrics a poller in THIS deployment can provide belong here — the work
+// deployment adds manifest.description alongside its manifests poller
+// (ADR-004); listing it here would flag every skill for an unfixable gap.
 export const EXPECTED_METRICS: Record<string, string[]> = {
   static_site: ["lhci.performance"],
   web_app: ["ci.status", "deps.vuln_count"],
-  plugin_skill: ["usage.invocations", "manifest.description"],
+  plugin_skill: ["usage.invocations"],
 };
 
 // Triage score — spec §4.1. Defaults here; overridable via /settings (stored in D1).

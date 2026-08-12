@@ -45,11 +45,12 @@ export function Layout(props: {
         <title>{props.title ? `${props.title} · Ops` : "Ops"}</title>
         <link rel="stylesheet" href="/tokens.css" />
         <script src="/htmx.min.js" defer></script>
-        {/* ux §5: "/" focuses the filter box — the whole shortcut system for v1 */}
+        {/* ux §5: "/" focuses the filter box; ux §2.1: row click navigates to the entity */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "document.addEventListener('keydown',function(e){if(e.key==='/'&&!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)){var i=document.querySelector('input[name=q]');if(i){e.preventDefault();i.focus()}}})",
+              "document.addEventListener('keydown',function(e){if(e.key==='/'&&!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)){var i=document.querySelector('input[name=q]');if(i){e.preventDefault();i.focus()}}});" +
+              "document.addEventListener('click',function(e){var r=e.target.closest('tr[data-href]');if(!r)return;if(e.target.closest('a,button,form,input,select,details,summary'))return;location.href=r.dataset.href});",
           }}
         ></script>
       </head>

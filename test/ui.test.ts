@@ -112,6 +112,61 @@ describe("entity page", () => {
   });
 });
 
+describe("interval chips + entity scoping", () => {
+  it("renders the usage chip as a 30d sum, never the latest daily row", async () => {
+    await upsertEntities(
+      env.DB,
+      [{ id: "repo:chrispezza/shelf", kind: "repo", category: "plugin_skill", name: "shelf" }],
+      NOW,
+    );
+    const day = NOW - (NOW % 86_400);
+    await insertSignals(
+      env.DB,
+      "skill_usage",
+      [5, 7, 6].map((n, i) => ({
+        entityId: "repo:chrispezza/shelf",
+        metric: "usage.invocations",
+        valueNum: n,
+        observedAt: day - i * 86_400 + 86_400,
+        period: { start: day - i * 86_400, end: day - i * 86_400 + 86_400 },
+        dedupeKey: String(day - i * 86_400),
+      })),
+    );
+    const html = await (await SELF.fetch("https://ops.local/")).text();
+    expect(html).toContain("usage 30d 18"); // 5+7+6 summed
+    expect(html).not.toContain("usage 30d 5");
+  });
+
+  it("keeps budget bookkeeping entities and vendor chips out of repo sections", async () => {
+    await upsertEntities(
+      env.DB,
+      [
+        { id: "vendor_api:anthropic", kind: "vendor_api", category: "vendor_api", name: "Anthropic", sourceUrl: "https://console.anthropic.com/settings/usage" },
+        { id: "budget:*", kind: "budget", name: "budget *" },
+      ],
+      NOW,
+    );
+    const html = await (await SELF.fetch("https://ops.local/")).text();
+    expect(html).toContain("Vendor APIs"); // vendors get their own section
+    expect(html).not.toContain("budget *"); // internal entity never renders
+    // no repo-shaped affordance on a vendor console
+    expect(html).not.toContain("https://console.anthropic.com/settings/usage/issues/new");
+  });
+});
+
+describe("archived entities in findings", () => {
+  it("stay visible on /findings with an archived badge", async () => {
+    await seedRepo();
+    await env.DB.prepare("UPDATE entities SET archived = 1 WHERE id = 'repo:clownware/gittunes'").run();
+    const html = await (await SELF.fetch("https://ops.local/findings")).text();
+    expect(html).toContain("ci.status");
+    expect(html).toContain("(archived)");
+    // but hidden from map and triage
+    const map = await (await SELF.fetch("https://ops.local/")).text();
+    expect(map).not.toContain(">gittunes<");
+  });
+});
+
 describe("health + degradation", () => {
   it("lists poller failures and shows the amber banner on other pages", async () => {
     const bad: Poller = {

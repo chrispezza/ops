@@ -2,12 +2,13 @@ import type { TriageWeights } from "../../config";
 import type { BudgetRow } from "../../core/derive";
 
 // The only writes to Ops-owned data (ux §2.7): budgets and triage weights.
-export function SettingsPage(props: { budgets: BudgetRow[]; weights: TriageWeights }) {
+export function SettingsPage(props: { budgets: BudgetRow[]; weights: TriageWeights; error?: string }) {
   const w = props.weights;
   const staleness90 = w.staleness.find((t) => t.minDays === 90)?.points ?? 6;
   const staleness30 = w.staleness.find((t) => t.minDays === 30)?.points ?? 3;
   return (
     <>
+      {props.error && <div class="banner amber">{props.error}</div>}
       <section class="section">
         <h2>Budgets</h2>
         {props.budgets.length > 0 && (

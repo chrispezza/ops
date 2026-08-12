@@ -1,5 +1,5 @@
 import type { EntityView } from "../../core/queries";
-import { Chip, Dot, newIssueUrl, timeAgo } from "../components";
+import { Chip, Dot, formatSignalValue, newIssueUrl, timeAgo } from "../components";
 import type { TriageRow } from "./triage";
 
 const SECTIONS: { category: string; title: string }[] = [
@@ -13,7 +13,13 @@ export function MapPage(props: { rows: TriageRow[]; q?: string; now: number }) {
   if (rows.length === 0 && !props.q) return <SetupChecklist />;
 
   const known = new Set(SECTIONS.map((s) => s.category));
-  const uncategorized = rows.filter((r) => !r.view.category || !known.has(r.view.category));
+  // Portfolio sections hold repos; vendor/spend entities get their own section;
+  // "tag these repos" only ever applies to actual repos (spec §2.4).
+  const vendors = rows.filter((r) => r.view.category === "vendor_api");
+  const untagged = rows.filter((r) => r.view.kind === "repo" && (!r.view.category || !known.has(r.view.category)));
+  const other = rows.filter(
+    (r) => r.view.kind !== "repo" && r.view.category !== "vendor_api" && !known.has(r.view.category ?? ""),
+  );
 
   return (
     <>
@@ -28,22 +34,39 @@ export function MapPage(props: { rows: TriageRow[]; q?: string; now: number }) {
             rows={rows.filter((r) => r.view.category === s.category)}
             now={now}
             hint={`No ${s.title.toLowerCase()} yet — tag repos with the matching topic.`}
+            rollup={s.category === "plugin_skill" ? skillsRollup(rows) : undefined}
           />
         ))}
-        {uncategorized.length > 0 && (
+        {vendors.length > 0 && <Section title="Vendor APIs & Keys" rows={vendors} now={now} />}
+        {untagged.length > 0 && (
           <Section
             title="Uncategorized"
-            rows={uncategorized}
+            rows={untagged}
             now={now}
             warning="tag these repos with a topic: static-site · web-app · mcp · skill"
           />
         )}
+        {other.length > 0 && <Section title="Other" rows={other} now={now} />}
       </div>
     </>
   );
 }
 
-function Section(props: { title: string; rows: TriageRow[]; now: number; hint?: string; warning?: string }) {
+// ux §2.1: skills section header rolls up total 30d invocations.
+function skillsRollup(rows: TriageRow[]): string | undefined {
+  const sums = rows.filter((r) => r.view.category === "plugin_skill" && r.usage30d != null);
+  if (sums.length === 0) return undefined;
+  return `Σ ${sums.reduce((total, r) => total + (r.usage30d ?? 0), 0)} invocations 30d`;
+}
+
+function Section(props: {
+  title: string;
+  rows: TriageRow[];
+  now: number;
+  hint?: string;
+  warning?: string;
+  rollup?: string;
+}) {
   const { title, rows, now } = props;
   const problems = rows.filter((r) => r.view.maxSeverity >= 2).length;
   return (
@@ -51,6 +74,7 @@ function Section(props: { title: string; rows: TriageRow[]; now: number; hint?: 
       <h2>
         {title} <span class="rollup num">{rows.length}</span>
         {problems > 0 && <span class="rollup num sev">{problems} ▲</span>}
+        {props.rollup && <span class="rollup num">{props.rollup}</span>}
         {props.warning && <span class="rollup warn-text">{props.warning}</span>}
       </h2>
       {/* ux §3: empty sections render with hint text, not omitted — the IA stays stable */}
@@ -70,7 +94,7 @@ function Section(props: { title: string; rows: TriageRow[]; now: number; hint?: 
 function Row(props: { row: TriageRow; now: number }) {
   const { view: e, score } = props.row;
   return (
-    <tr class="row">
+    <tr class="row" data-href={`/e/${e.id}`}>
       <td class="c-dot">
         <Dot severity={e.maxSeverity} />
       </td>
@@ -79,20 +103,22 @@ function Row(props: { row: TriageRow; now: number }) {
       </td>
       <td class="c-kind">{e.category ?? e.kind}</td>
       <td class="c-chips">
-        <Chips entity={e} now={props.now} />
+        <Chips row={props.row} now={props.now} />
       </td>
       <td class="num">{score.total > 0 ? score.total : ""}</td>
       <td class="c-links">
         {e.source_url && <a href={e.source_url}>↗</a>}
-        {e.source_url && <a href={newIssueUrl(e.source_url)}>+issue</a>}
+        {/* pre-filled new-issue is a repo affordance — meaningless on vendor consoles */}
+        {e.kind === "repo" && e.source_url && <a href={newIssueUrl(e.source_url)}>+issue</a>}
       </td>
     </tr>
   );
 }
 
 // Per-category chip sets, hardcoded v1 (ux §6 decision: move to config only if they churn).
-function Chips(props: { entity: EntityView; now: number }) {
-  const { entity: e, now } = props;
+function Chips(props: { row: TriageRow; now: number }) {
+  const { view: e, usage30d } = props.row;
+  const { now } = props;
   const l = e.latest;
   const pushed = (
     <Chip label="pushed" signal={l["repo.pushed_at"]} now={now} render={(s) => timeAgo(s.value_num ?? 0, now)} />
@@ -117,10 +143,32 @@ function Chips(props: { entity: EntityView; now: number }) {
     case "plugin_skill":
       return (
         <>
-          <Chip label="usage 30d" signal={l["usage.invocations"]} now={now} />
+          {/* interval metric: 30d SUM, never the latest row (spec §2.2) */}
+          {usage30d == null ? (
+            <span class="chip missing" title="usage 30d: no data">
+              usage 30d —
+            </span>
+          ) : (
+            <span class="chip" title="invocations, 30d sum">
+              usage 30d {usage30d}
+            </span>
+          )}
           {pushed}
         </>
       );
+    case "vendor_api": {
+      const anomaly = l["spend.anomaly"];
+      const budget = l["budget.status"];
+      return (
+        <>
+          {anomaly && anomaly.severity >= 2 && <Chip label="anomaly" signal={anomaly} now={now} render={(s) => formatSignalValue(s, now)} />}
+          {budget && budget.severity >= 2 && <Chip label="budget" signal={budget} now={now} render={(s) => formatSignalValue(s, now)} />}
+          <a href="/spend" class="chip">
+            spend →
+          </a>
+        </>
+      );
+    }
     default:
       return (
         <>
