@@ -63,9 +63,25 @@ export function Chip(props: { label: string; signal?: SignalRow; now: number; re
       {sev >= 2 ? "▲" : ""}
     </span>
   );
-  return signal.url ? <a href={signal.url}>{body}</a> : body;
+  const href = safeHref(signal.url);
+  return href ? <a href={href}>{body}</a> : body;
 }
 
-export function newIssueUrl(sourceUrl: string): string {
-  return `${sourceUrl}/issues/new`;
+// JSX escaping stops markup injection but not `javascript:` — the scheme needs
+// no special characters. Ingest sets url/sourceUrl/metadata.homepage freely, so
+// every href renders through here (same check the uptime poller already makes).
+export function safeHref(url: string | null | undefined): string | undefined {
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : undefined;
+}
+
+// The "↗" out-link, repeated across every list view. Renders nothing when the
+// stored URL fails safeHref, so a poisoned row loses its link, not the page.
+export function ExtLink(props: { url: string | null | undefined; children?: unknown }) {
+  const href = safeHref(props.url);
+  return href ? <a href={href}>{props.children ?? "↗"}</a> : null;
+}
+
+export function newIssueUrl(sourceUrl: string): string | undefined {
+  const safe = safeHref(sourceUrl);
+  return safe ? `${safe}/issues/new` : undefined;
 }

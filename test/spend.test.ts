@@ -167,7 +167,12 @@ describe("spend + settings pages", () => {
     form.set("staleness_30", "3");
     form.set("staleness_90", "6");
     form.set("zero_usage_bonus", "5");
-    await SELF.fetch("https://ops.local/settings/weights", { method: "POST", body: form, redirect: "manual" });
+    await SELF.fetch("https://ops.local/settings/weights", {
+      method: "POST",
+      body: form,
+      redirect: "manual",
+      headers: { origin: "https://ops.local" },
+    });
 
     await upsertEntities(env.DB, [{ id: "repo:x", kind: "repo", category: "web_app", name: "xrepo" }], NOW);
     await insertSignals(env.DB, "github", [

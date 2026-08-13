@@ -37,7 +37,9 @@ Ops serves two deployments: a personal portfolio (public-friendly) and a work po
 
 ## Decision
 
-We will go with **Option 1**. Public repo: core, UI, `github`/`anthropic_usage` pollers, `/ingest`. Work-only pollers (`manifests`, `skill_usage`, SEO ingest) live in a private repo that imports the public package and composes its own `POLLERS` array. Deployment specifics are `wrangler.toml`/`wrangler.jsonc` vars and Worker secrets — never code, never D1.
+We will go with **Option 1**. Public repo: core, UI, `github`/`anthropic_usage` pollers, `/ingest`. Work-only pollers (`skill_usage`, SEO ingest) live in a private repo that imports the public package and composes its own `POLLERS` array. Deployment specifics are `wrangler.toml`/`wrangler.jsonc` vars and Worker secrets — never code, never D1.
+
+**Amendment (2026-08-13):** `manifests` was originally classified work-only. It now polls a *public* Claude Code plugin marketplace, so it ships in the public repo — but only under the rule above: its target is the `MARKETPLACE_REPO` var, not a constant in the source, and it is dormant when that var is unset. The classification test is therefore not "which poller" but "does it name a private resource in code" — a poller whose target is deployment config satisfies the review gate below regardless of what it points at.
 
 ## Consequences
 

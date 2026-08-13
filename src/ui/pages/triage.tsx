@@ -1,7 +1,7 @@
 import { labelForMetric } from "../../config";
 import type { EntityView } from "../../core/queries";
 import { activityAt, type Score } from "../../core/score";
-import { Chip, Dot, newIssueUrl } from "../components";
+import { Chip, Dot, ExtLink, newIssueUrl, safeHref } from "../components";
 
 export interface TriageRow {
   view: EntityView;
@@ -150,18 +150,18 @@ function Row(props: { row: TriageRow; now: number }) {
       <td class="num">{score.total}</td>
       <td class="num c-kind">
         {e.latest["issues.open"]?.value_num != null && (
-          <a href={e.latest["issues.open"]?.url ?? `/e/${e.id}`}>{e.latest["issues.open"]?.value_num}</a>
+          <a href={safeHref(e.latest["issues.open"]?.url) ?? `/e/${e.id}`}>{e.latest["issues.open"]?.value_num}</a>
         )}
       </td>
       <td class="num c-kind">
         {e.latest["deps.vuln_count"]?.value_num != null && (
-          <a href={e.latest["deps.vuln_count"]?.url ?? `/e/${e.id}`}>{e.latest["deps.vuln_count"]?.value_num}</a>
+          <a href={safeHref(e.latest["deps.vuln_count"]?.url) ?? `/e/${e.id}`}>{e.latest["deps.vuln_count"]?.value_num}</a>
         )}
       </td>
       <td class="num c-kind">{staleDays > 0 ? `${staleDays}d` : ""}</td>
       <td class="c-links">
-        {e.source_url && <a href={e.source_url}>↗</a>}
-        {e.kind === "repo" && e.source_url && <a href={newIssueUrl(e.source_url)}>+issue</a>}
+        <ExtLink url={e.source_url} />
+        {e.kind === "repo" && e.source_url && <ExtLink url={newIssueUrl(e.source_url)}>+issue</ExtLink>}
       </td>
     </tr>
   );

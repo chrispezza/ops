@@ -99,7 +99,12 @@ describe("entity page", () => {
     const form = new FormData();
     form.set("entity_id", "repo:clownware/gittunes");
     form.set("archived", "1");
-    await SELF.fetch("https://ops.local/archive", { method: "POST", body: form, redirect: "manual" });
+    await SELF.fetch("https://ops.local/archive", {
+      method: "POST",
+      body: form,
+      redirect: "manual",
+      headers: { origin: "https://ops.local" },
+    });
     const map = await (await SELF.fetch("https://ops.local/")).text();
     expect(map).toContain("archived-section");
     expect(map.split("archived-section")[0]).not.toContain(">gittunes<"); // absent before the archived block
@@ -215,5 +220,99 @@ describe("health + degradation", () => {
     const map = await (await SELF.fetch("https://ops.local/")).text();
     expect(map).toContain("banner amber");
     expect(map).toContain("/health");
+  });
+});
+
+describe("same-origin gate", () => {
+  const form = () => {
+    const f = new FormData();
+    f.set("entity_id", "repo:clownware/gittunes");
+    f.set("archived", "1");
+    return f;
+  };
+
+  it("refuses a state-mutating POST with no Origin (curl against an Access-less deployment)", async () => {
+    const res = await SELF.fetch("https://ops.local/archive", { method: "POST", body: form(), redirect: "manual" });
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses a cross-origin POST (CSRF from another site)", async () => {
+    const res = await SELF.fetch("https://ops.local/archive", {
+      method: "POST",
+      body: form(),
+      redirect: "manual",
+      headers: { origin: "https://evil.example" },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("refuses an unauthenticated /health/run, the poller fan-out trigger", async () => {
+    const res = await SELF.fetch("https://ops.local/health/run", { method: "POST", redirect: "manual" });
+    expect(res.status).toBe(403);
+  });
+
+  it("allows same-origin POSTs and leaves GETs untouched", async () => {
+    await seedRepo();
+    const res = await SELF.fetch("https://ops.local/archive", {
+      method: "POST",
+      body: form(),
+      redirect: "manual",
+      headers: { origin: "https://ops.local" },
+    });
+    expect(res.status).toBe(302);
+    expect((await SELF.fetch("https://ops.local/")).status).toBe(200);
+  });
+
+  it("exempts /ingest, which carries its own bearer token", async () => {
+    const res = await SELF.fetch("https://ops.local/ingest", {
+      method: "POST",
+      headers: { authorization: "Bearer test-ingest-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        entities: [{ id: "repo:ci/pushed", kind: "repo", name: "pushed" }],
+        signals: [
+          { entityId: "repo:ci/pushed", metric: "ci.status", valueText: "success", observedAt: NOW, dedupeKey: "run-1" },
+        ],
+      }),
+    });
+    expect(res.status).toBe(202);
+  });
+});
+
+describe("hostile URLs from ingest never become live links", () => {
+  it("strips javascript: hrefs from signal and entity URLs", async () => {
+    await upsertEntities(
+      env.DB,
+      [
+        {
+          id: "repo:evil/x",
+          kind: "repo",
+          category: "web_app",
+          name: "evilrepo",
+          owner: "evil",
+          sourceUrl: "javascript:alert(1)",
+          metadata: { homepage: "javascript:alert(2)" },
+        },
+      ],
+      NOW,
+    );
+    await insertSignals(env.DB, "ci_ingest", [
+      {
+        entityId: "repo:evil/x",
+        metric: "ci.status",
+        valueText: "failure",
+        severity: 3,
+        url: "javascript:alert(3)",
+        observedAt: NOW,
+        dedupeKey: "x",
+      },
+    ]);
+
+    for (const path of ["/", "/triage", "/findings", "/e/repo:evil/x"]) {
+      const html = await (await SELF.fetch(`https://ops.local${path}`)).text();
+      expect(html, `${path} must not linkify javascript:`).not.toContain('href="javascript:');
+    }
+    // the entity page still shows the URL as text — only the href is withheld
+    const detail = await (await SELF.fetch("https://ops.local/e/repo:evil/x")).text();
+    expect(detail).toContain("javascript:alert(1)");
   });
 });

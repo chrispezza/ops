@@ -1,7 +1,7 @@
 import { DOMAIN_LABELS, labelForMetric } from "../../config";
 import { buildAgentPrompt } from "../../core/agent-prompt";
 import type { EntityRow, SignalRow } from "../../core/queries";
-import { Dot, formatSignalValue, timeAgo } from "../components";
+import { Dot, ExtLink, formatSignalValue, safeHref, timeAgo } from "../components";
 
 const HISTORY_PAGE = 50;
 
@@ -39,11 +39,12 @@ export function EntityPage(props: {
   const domains = groupBy(stateSignals, (s) => s.metric.split(".")[0] ?? "other");
   const homepage = (() => {
     try {
-      return (JSON.parse(e.metadata ?? "{}") as { homepage?: string }).homepage;
+      return safeHref((JSON.parse(e.metadata ?? "{}") as { homepage?: string }).homepage);
     } catch {
       return undefined;
     }
   })();
+  const sourceHref = safeHref(e.source_url);
 
   return (
     <>
@@ -55,9 +56,7 @@ export function EntityPage(props: {
           <span class="chip">{e.kind}</span>
           {e.category && <span class="chip">{e.category}</span>}
           {e.owner && <span>{e.owner} · </span>}
-          {e.source_url && (
-            <a href={e.source_url}>{e.source_url}</a>
-          )}
+          {e.source_url && (sourceHref ? <a href={sourceHref}>{e.source_url}</a> : <span>{e.source_url}</span>)}
           {homepage && (
             <>
               {" "}
@@ -72,10 +71,10 @@ export function EntityPage(props: {
           <button type="submit">{e.archived ? "Unarchive in Ops" : "Archive in Ops"}</button>
         </form>
         {/* Ops never writes to GitHub (ADR-001) — retiring the repo itself is a separate act */}
-        {!e.archived && e.kind === "repo" && e.source_url && (
+        {!e.archived && e.kind === "repo" && sourceHref && (
           <p class="hint">
             Hides it from this dashboard only — to retire the repo itself,{" "}
-            <a href={`${e.source_url}/settings`}>archive it on GitHub ↗</a> and Ops follows on the next poll.
+            <a href={`${sourceHref}/settings`}>archive it on GitHub ↗</a> and Ops follows on the next poll.
           </p>
         )}
       </header>
@@ -101,7 +100,7 @@ export function EntityPage(props: {
                   {props.trends.has(s.metric) && <TrendSpark points={props.trends.get(s.metric) ?? []} />}
                 </td>
                 <td class="c-kind">{timeAgo(s.observed_at, now)} ago</td>
-                <td class="c-links">{s.url && <a href={s.url}>↗</a>}</td>
+                <td class="c-links"><ExtLink url={s.url} /></td>
               </tr>
             ))}
           </table>
@@ -171,7 +170,7 @@ export function HistoryRows(props: { entityId: string; history: SignalRow[]; off
             </td>
             <td class="num">{formatSignalValue(s, props.now)}</td>
             <td class="c-kind">{s.source}</td>
-            <td class="c-links">{s.url && <a href={s.url}>↗</a>}</td>
+            <td class="c-links"><ExtLink url={s.url} /></td>
           </tr>
         ))}
       </table>

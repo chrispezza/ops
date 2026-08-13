@@ -1,6 +1,6 @@
 import { labelForMetric } from "../../config";
 import type { FindingRow } from "../../core/queries";
-import { Dot, formatSignalValue, timeAgo } from "../components";
+import { Dot, ExtLink, formatSignalValue, timeAgo } from "../components";
 
 export interface FindingsFilters {
   minSeverity: number;
@@ -155,7 +155,9 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
             {formatSignalValue(r, props.now)}
           </td>
           <td class="c-kind">{timeAgo(r.observed_at, props.now)} ago</td>
-          <td class="c-links">{r.url && <a href={r.url}>↗</a>}</td>
+          <td class="c-links">
+            <ExtLink url={r.url} />
+          </td>
         </tr>
         );
       })}

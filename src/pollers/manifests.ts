@@ -1,11 +1,18 @@
 import type { EntityUpsert, Poller, PollerResult, SignalInsert } from "./types";
 
-// Spec §3.1's manifests concept, pointed at the public plugin marketplace:
+// Spec §3.1's manifests concept, pointed at a Claude Code plugin marketplace:
 // marketplace.json defines the plugins, git trees enumerate each plugin's
 // skills (one SKILL.md per skill). Plugins and skills become entities;
 // missing plugin descriptions become hygiene signals. Deep per-skill quality
 // belongs to /skill-audit pushed through /ingest — this poller is inventory.
-const MARKETPLACE = { owner: "clownware", repo: "plugins" };
+//
+// The target is deployment config, not code (ADR-004): set the MARKETPLACE_REPO
+// var to "owner/repo". Unset leaves the poller dormant, so a fresh deployment
+// with no marketplace reports nothing rather than failing every daily run.
+function marketplaceRef(env: Env): { owner: string; repo: string } | null {
+  const [owner, repo] = (env.MARKETPLACE_REPO ?? "").split("/");
+  return owner && repo ? { owner, repo } : null;
+}
 
 interface MarketplacePlugin {
   name: string;
@@ -13,10 +20,10 @@ interface MarketplacePlugin {
   description?: string;
 }
 
-function pat(env: Env): string {
-  const key = `GITHUB_PAT_${MARKETPLACE.owner.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+function pat(env: Env, owner: string): string {
+  const key = `GITHUB_PAT_${owner.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
   const token = (env as unknown as Record<string, string | undefined>)[key] ?? env.GITHUB_PAT;
-  if (!token) throw new Error("manifests: no GitHub PAT for the marketplace owner");
+  if (!token) throw new Error(`unconfigured: set the ${key} or GITHUB_PAT secret to enable this poller`);
   return token;
 }
 
@@ -53,9 +60,10 @@ export const manifests: Poller = {
     "manifest.skill_count": "state",
   },
   async poll(env) {
-    const token = pat(env);
+    const mp = marketplaceRef(env);
+    if (!mp) throw new Error('unconfigured: set the MARKETPLACE_REPO var ("owner/repo") to enable this poller');
+    const token = pat(env, mp.owner);
     const now = Math.floor(Date.now() / 1000);
-    const mp = MARKETPLACE;
 
     const marketplace = await ghJson<{ plugins: MarketplacePlugin[] }>(
       token,
