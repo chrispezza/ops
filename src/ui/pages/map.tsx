@@ -1,5 +1,5 @@
 import type { ArchivedEntity, EntityView } from "../../core/queries";
-import { Chip, Dot, formatSignalValue, newIssueUrl, timeAgo } from "../components";
+import { Chip, Dot, ExtLink, formatSignalValue, newIssueUrl, timeAgo } from "../components";
 import type { TriageRow } from "./triage";
 
 const SECTIONS: { category: string; title: string }[] = [
@@ -203,10 +203,10 @@ function Row(props: { row: TriageRow; now: number }) {
       </td>
       <td class="c-links">
         {/* the uptime signal's url IS the deployed site — one link, straight to prod */}
-        {e.latest["site.up"]?.url && <a href={e.latest["site.up"]?.url ?? ""}>live</a>}
-        {e.source_url && <a href={e.source_url}>↗</a>}
+        <ExtLink url={e.latest["site.up"]?.url}>live</ExtLink>
+        <ExtLink url={e.source_url} />
         {/* pre-filled new-issue is a repo affordance — meaningless on vendor consoles */}
-        {e.kind === "repo" && e.source_url && <a href={newIssueUrl(e.source_url)}>+issue</a>}
+        {e.kind === "repo" && e.source_url && <ExtLink url={newIssueUrl(e.source_url)}>+issue</ExtLink>}
       </td>
     </tr>
   );

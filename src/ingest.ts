@@ -7,6 +7,17 @@ import type { EntityUpsert, SignalInsert } from "./pollers/types";
 // validation at the boundary, then the same store path as every poller.
 
 const MAX_ITEMS = 500;
+// Ingest tokens are distributed to every CI pipeline in the portfolio, so the
+// comparison is constant-time: SHA-256 both sides to equal-length digests
+// (timingSafeEqual throws on a length mismatch) and compare those.
+const MAX_BODY_BYTES = 1_000_000;
+
+async function tokenMatches(presented: string | undefined, expected: string): Promise<boolean> {
+  if (!presented) return false;
+  const digest = async (s: string) => await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  const [a, b] = await Promise.all([digest(presented), digest(`Bearer ${expected}`)]);
+  return crypto.subtle.timingSafeEqual(a, b);
+}
 
 interface IngestPayload {
   entities?: EntityUpsert[];
@@ -85,11 +96,18 @@ function validatePayload(body: unknown): { payload?: IngestPayload; error?: stri
 export async function handleIngest(c: Context<{ Bindings: Env }>): Promise<Response> {
   const token = c.env.INGEST_TOKEN;
   if (!token) return c.json({ error: "ingest disabled: INGEST_TOKEN not configured" }, 503);
-  if (c.req.header("authorization") !== `Bearer ${token}`) return c.json({ error: "unauthorized" }, 401);
+  if (!(await tokenMatches(c.req.header("authorization"), token))) return c.json({ error: "unauthorized" }, 401);
+
+  // MAX_ITEMS caps element count, not element size — without this a single
+  // authenticated request can buffer an arbitrarily large body into the isolate.
+  const declared = Number(c.req.header("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return c.json({ error: "payload too large" }, 413);
 
   let body: unknown;
   try {
-    body = await c.req.json();
+    const raw = await c.req.text();
+    if (raw.length > MAX_BODY_BYTES) return c.json({ error: "payload too large" }, 413);
+    body = JSON.parse(raw);
   } catch {
     return c.json({ error: "invalid JSON" }, 400);
   }

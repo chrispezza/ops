@@ -46,6 +46,21 @@ const DAY = 86_400;
 
 const app = new Hono<{ Bindings: Env }>();
 
+// Same-origin gate on every state-mutating request. Browsers always send Origin
+// on POST, so a match proves the request came from a page served by this
+// deployment: it blocks cross-site form CSRF and, because non-browser clients
+// send no Origin at all, anonymous curl against the write routes — notably
+// /health/run, which fans out to every upstream API on a single request.
+// Cloudflare Access (README) remains the authentication layer; this is the
+// defense-in-depth that survives a deployment where Access is misconfigured.
+// /ingest is exempt by design: it is a machine endpoint with its own bearer token.
+app.use("*", async (c, next) => {
+  const url = new URL(c.req.url);
+  if (c.req.method !== "POST" || url.pathname === "/ingest") return next();
+  if (c.req.header("origin") !== url.origin) return c.text("cross-origin request refused", 403);
+  return next();
+});
+
 const epochNow = () => Math.floor(Date.now() / 1000);
 
 async function scoredViews(db: D1Database, now: number): Promise<TriageRow[]> {
