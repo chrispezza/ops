@@ -52,7 +52,7 @@ export const cloudflare: Poller = {
     const token = env.CLOUDFLARE_API_TOKEN;
     if (!token) throw new Error("unconfigured: set the CLOUDFLARE_API_TOKEN secret (Analytics:Read + D1:Read) to enable this poller");
     const account = env.CF_ACCOUNT_ID;
-    if (!account) throw new Error("cloudflare: CF_ACCOUNT_ID var is not set");
+    if (!account) throw new Error("unconfigured: set the CF_ACCOUNT_ID var to enable this poller");
 
     const now = Math.floor(Date.now() / 1000);
     const dayBucket = String(now - (now % DAY));

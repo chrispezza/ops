@@ -78,7 +78,7 @@ export const anthropicUsage: Poller = {
   },
   async poll(env) {
     const key = env.ANTHROPIC_ADMIN_KEY;
-    if (!key) throw new Error("anthropic_usage: ANTHROPIC_ADMIN_KEY secret is not set");
+    if (!key) throw new Error("unconfigured: set the ANTHROPIC_ADMIN_KEY secret to enable this poller");
 
     const startingAt = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
     const entities = new Map<string, EntityUpsert>();

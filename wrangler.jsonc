@@ -21,10 +21,15 @@
 			"0 10 * * *"
 		]
 	},
+	// Deployment specifics live here, never in code (ADR-004). Forking this repo
+	// means replacing every value in this block and the d1 database_id above with
+	// your own; none of them are secrets (those go in `wrangler secret put`).
 	"vars": {
 		"GITHUB_OWNERS": "chrispezza,clownware",
 		"OPS_URL": "https://ops.chris-d8c.workers.dev",
-		"CF_ACCOUNT_ID": "d8c9e6e20235d4f8ac60c6c17d0bbc2e"
+		"CF_ACCOUNT_ID": "d8c9e6e20235d4f8ac60c6c17d0bbc2e",
+		// "owner/repo" of a Claude Code plugin marketplace; omit to leave the manifests poller dormant
+		"MARKETPLACE_REPO": "clownware/plugins"
 	},
 	"observability": {
 		"enabled": true

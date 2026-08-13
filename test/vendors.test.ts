@@ -3,8 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type BalanceEntry, deriveBalances } from "../src/core/derive";
 import { latestSignals, putSetting } from "../src/core/queries";
 import { insertSignals, upsertEntities } from "../src/core/store";
+import { anthropicUsage } from "../src/pollers/anthropic-usage";
+import { claudeCode } from "../src/pollers/claude-code";
+import { manifests } from "../src/pollers/manifests";
 import { openaiCosts } from "../src/pollers/openai-costs";
+import type { Poller } from "../src/pollers/types";
 import { xUsage } from "../src/pollers/x-usage";
+import { runPollers } from "../src/core/runner";
 
 const DAY = 86_400;
 const NOW = Math.floor(Date.now() / 1000);
@@ -141,5 +146,45 @@ describe("archived section", () => {
     // archived stays out of the category sections and triage
     const triage = await (await SELF.fetch("https://ops.local/triage")).text();
     expect(triage).not.toContain("dead-thing");
+  });
+});
+
+// runner.ts treats an "unconfigured"-prefixed error as severity 1 (calm) rather
+// than 3 (degraded), so an optional poller with no credential must not trip the
+// degradation banner on a fresh deployment. Only `github`, the core poller,
+// fails loudly — see test/github.test.ts.
+describe("optional pollers report unconfigured calmly", () => {
+  const noCtx = { listEntities: async () => [] };
+  const cases: [string, (e: Env) => Promise<unknown>][] = [
+    ["anthropic_usage", (e) => anthropicUsage.poll(e, noCtx)],
+    ["claude_code", (e) => claudeCode.poll(e, noCtx)],
+    ["manifests", (e) => manifests.poll(e, noCtx)],
+  ];
+
+  for (const [name, run] of cases) {
+    it(`${name} uses the unconfigured sentinel`, async () => {
+      const bare = {
+        ...env,
+        ANTHROPIC_ADMIN_KEY: undefined,
+        GITHUB_PAT: undefined,
+        MARKETPLACE_REPO: undefined,
+      } as unknown as Env;
+      await expect(run(bare)).rejects.toThrow(/^unconfigured/);
+    });
+  }
+
+  it("maps the sentinel to severity 1, not the degraded 3", async () => {
+    const unconfigured: Poller = {
+      id: "anthropic_usage",
+      schedule: "daily",
+      metricSemantics: {},
+      poll: async () => {
+        throw new Error("unconfigured: set the ANTHROPIC_ADMIN_KEY secret to enable this poller");
+      },
+    };
+    const [summary] = await runPollers(env, "daily", { pollers: [unconfigured], now: NOW });
+    expect(summary?.ok).toBe(false);
+    const status = await latestSignals(env.DB, "poller:anthropic_usage");
+    expect(status.find((s) => s.metric === "poller.status")?.severity).toBe(1);
   });
 });

@@ -54,7 +54,7 @@ export const claudeCode: Poller = {
   },
   async poll(env) {
     const key = env.ANTHROPIC_ADMIN_KEY;
-    if (!key) throw new Error("claude_code: ANTHROPIC_ADMIN_KEY secret is not set");
+    if (!key) throw new Error("unconfigured: set the ANTHROPIC_ADMIN_KEY secret to enable this poller");
 
     const signals: SignalInsert[] = [];
     const todayStart = Math.floor(Date.now() / 1000 / DAY) * DAY;
