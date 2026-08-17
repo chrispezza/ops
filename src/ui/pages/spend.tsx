@@ -106,33 +106,44 @@ export function SpendPage(props: {
           </p>
         ) : (
           <table class="rows">
-            {props.entities.map((e) => (
-              <tr class="row">
-                <td class="c-name">
-                  <a href={`/e/${e.id}`}>{e.name}</a>
-                </td>
-                <td class="num">MTD ${e.mtd.toFixed(2)}</td>
-                <td>
-                  <Sparkline points={e.points} days={props.windowDays} now={now} />
-                </td>
-                <td class="num">today ${e.today.toFixed(2)}</td>
-                <td class="num">
-                  {e.balance && (
-                    <span class="chip" data-sev={e.balance.severity} title={e.balance.value_text ?? ""}>
-                      bal ${(e.balance.value_num ?? 0).toFixed(2)}
-                      {e.balance.severity >= 2 ? "▲" : ""}
-                    </span>
-                  )}
-                </td>
-                <td>
-                  {e.anomaly && e.anomaly.severity >= 2 && (
-                    <span class="chip" data-sev="2" title={e.anomaly.value_text ?? ""}>
-                      anomaly ▲
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {props.entities.map((e) => {
+              // spec §2.3's row anatomy is "MTD $41.20 / $60" — the denominator
+              // comes from a budget scoped to this entity, when one exists
+              const budget = budgets.find((b) => b.scope === e.id);
+              return (
+                <tr class="row">
+                  <td class="c-name">
+                    <a href={`/e/${e.id}`}>{e.name}</a>
+                  </td>
+                  <td class="num" title={budget ? `soft $${budget.soft_limit} · hard $${budget.hard_limit} (${budget.period})` : undefined}>
+                    MTD ${e.mtd.toFixed(2)}
+                    {budget ? ` / $${budget.soft_limit}` : ""}
+                  </td>
+                  <td>
+                    <Sparkline points={e.points} days={props.windowDays} now={now} />
+                  </td>
+                  <td class="num">today ${e.today.toFixed(2)}</td>
+                  <td class="num">
+                    {/* badges link to the entity page, where the signal's full
+                        history lives — they were inert spans (spec §2.3 wants
+                        badges "linking to the signal detail") */}
+                    {e.balance && (
+                      <a href={`/e/${e.id}`} class="chip" data-sev={e.balance.severity} title={e.balance.value_text ?? ""}>
+                        bal ${(e.balance.value_num ?? 0).toFixed(2)}
+                        {e.balance.severity >= 2 ? "▲" : ""}
+                      </a>
+                    )}
+                  </td>
+                  <td>
+                    {e.anomaly && e.anomaly.severity >= 2 && (
+                      <a href={`/e/${e.id}`} class="chip" data-sev="2" title={e.anomaly.value_text ?? ""}>
+                        anomaly ▲
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </table>
         )}
       </section>

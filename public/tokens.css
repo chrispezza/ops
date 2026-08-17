@@ -542,3 +542,60 @@ tr.cluster-cont td { border-top-color: transparent; } /* clustered findings read
     border-bottom: none;
   }
 }
+
+/* ————————————————————————————————————————————————————————————————————
+   LCARS-inspired chrome (ops-ux §4: "the LCARS-inspired treatment, when
+   earned, is a token-file + layout-chrome swap" — earned: tokens audited,
+   zero hardcoded colors, contrast verified). Pezza discipline holds
+   throughout: the geometry does the evoking — rails, end-caps, asymmetric
+   pills — while INK does the coloring. No new hues, accent stays a cursor.
+   ———————————————————————————————————————————————————————————————————— */
+
+/* Section headings become rails: a rounded end-cap block, the label, then a
+   rule running to the margin — the LCARS elbow abstracted to one line. */
+section.section h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-bottom: none;
+  padding-bottom: 0;
+  min-height: 14px;
+}
+section.section h2::before {
+  content: "";
+  flex: 0 0 26px;
+  height: 10px;
+  background: hsl(var(--fg-muted));
+  border-radius: 999px 0 0 999px;
+}
+section.section h2::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 2px;
+  min-width: var(--space-4);
+  background: hsl(var(--border));
+}
+/* warning sections carry a status-colored cap — muted status hue, not accent */
+section.section.warn h2::before { background: hsl(var(--sev-2)); }
+
+/* Buttons wear the asymmetric LCARS end-cap: rounded on the leading edge,
+   squared where the console continues. Press behavior unchanged (scale .97). */
+form button {
+  border-radius: 999px 3px 3px 999px;
+  padding-left: var(--space-4);
+}
+
+/* The degradation banner reads as an alert rail: thick warn cap, rounded end. */
+.banner.amber {
+  border-left: 14px solid hsl(var(--sev-2));
+  border-radius: 999px 0 0 999px;
+  border-bottom: none;
+  margin-bottom: var(--space-2);
+}
+
+/* The freshness chip is the one live readout — pill it like a console lamp. */
+a.freshness {
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: 999px;
+  padding: 1px var(--space-3);
+}

@@ -13,6 +13,31 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
   const findings: string[] = [];
   const done: string[] = [];
 
+  // Severity order: a down production site outranks everything else on the
+  // page — the prompt used to skip it entirely (only CI/deps/PRs/issues were
+  // read), so the hand-off could omit the very finding that made the row red.
+  const site = by("site.up");
+  if (site && site.severity > 0) {
+    findings.push(`- the deployed site is DOWN${link(site)} — highest priority`);
+    done.push("- the site responds successfully (ops signal: site.up = up)");
+  }
+  const lhci = by("lhci.performance");
+  if (lhci && lhci.severity > 0) {
+    findings.push(`- Lighthouse performance is ${lhci.value_num ?? "?"}${link(lhci)}`);
+    done.push("- Lighthouse performance back above its budget (ops signal: lhci.performance, pushed by CI)");
+  }
+  const docs = by("docs.score");
+  if (docs && docs.severity > 0 && docs.value_text) {
+    findings.push(`- documentation gaps — ${docs.value_text}`);
+    done.push("- docs complete (ops signal: docs.score = 100)");
+  }
+  const expected = latest.filter((s) => s.metric.startsWith("hygiene.missing.") && s.severity > 0);
+  if (expected.length > 0) {
+    const names = expected.map((s) => s.metric.slice("hygiene.missing.".length)).join(", ");
+    findings.push(`- expected metrics never reported: ${names} — this category of repo should push them from CI`);
+    done.push("- each expected metric arrives via POST /ingest from the repo's CI (see the ops README)");
+  }
+
   const ci = by("ci.status");
   if (ci && ci.severity > 0) {
     findings.push(`- CI is failing on the default branch${link(ci)}`);
@@ -56,10 +81,11 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     "",
     "Approach:",
     `1. Get the repo (gh repo clone ${repoRef} if you don't have a checkout) and read its CLAUDE.md / README / CONTRIBUTING for conventions before changing anything.`,
-    "2. Start with the CI failure if there is one: gh run list, then gh run view --log-failed on the latest failing run.",
-    "3. For Dependabot alerts: gh api repos/" + repoRef + "/dependabot/alerts — prefer minimal version bumps that keep tests green.",
-    "4. For PRs and issues: gh pr list / gh issue list — summarize state and recommend merge/update/close per item rather than silently fixing.",
-    "5. Run the repo's own tests and quality gates before proposing changes.",
+    "2. A down site comes first: check the host/DNS/deploy pipeline via the finding's URL before touching code.",
+    "3. Then the CI failure if there is one: gh run list, then gh run view --log-failed on the latest failing run.",
+    "4. For Dependabot alerts: gh api repos/" + repoRef + "/dependabot/alerts — prefer minimal version bumps that keep tests green.",
+    "5. For PRs and issues: gh pr list / gh issue list — summarize state and recommend merge/update/close per item rather than silently fixing.",
+    "6. Run the repo's own tests and quality gates before proposing changes.",
     "",
     "Definition of done (the ops dashboard re-checks these automatically on its next hourly poll):",
     ...(done.length > 0 ? done : ["- all findings above are resolved or explicitly triaged with reasons"]),
