@@ -15,7 +15,12 @@ export interface SpendEntity {
 
 // Server-rendered inline SVG bars — no chart library (ux §2.3). Today's bar is
 // hollow: the day is partial and the dedupe-key overwrite will settle it.
-export function Sparkline(props: { points: { period_start: number; total: number }[]; days: number; now: number }) {
+export function Sparkline(props: {
+  points: { period_start: number; total: number }[];
+  days: number;
+  now: number;
+  label?: string; // aria naming — defaults to spend, callers with other units say so
+}) {
   const { days, now } = props;
   const today = now - (now % DAY);
   const start = today - (days - 1) * DAY;
@@ -28,7 +33,7 @@ export function Sparkline(props: { points: { period_start: number; total: number
   const h = 16;
   const w = days * (barW + gap);
   return (
-    <svg class="spark" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`daily spend, ${days} days`}>
+    <svg class="spark" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${props.label ?? "daily spend"}, ${days} days`}>
       {values.map((v, i) => {
         const barH = Math.max(1, Math.round((v / max) * (h - 2)));
         const isToday = start + i * DAY === today;
@@ -55,13 +60,16 @@ export function SpendPage(props: {
   now: number;
 }) {
   const { budgets, orgMtd, now } = props;
+  // budget scopes are entity ids — label bars with the display name the
+  // by-entity table already uses, not "vendor_api:anthropic"
+  const names = new Map(props.entities.map((e) => [e.id, e.name]));
   return (
     <>
       <section class="section">
         <h2>Month to date</h2>
         <p class="mtd num">${orgMtd.toFixed(2)}</p>
         {budgets.map((b) => (
-          <BudgetBar budget={b} spent={b.spent} />
+          <BudgetBar budget={b} spent={b.spent} label={names.get(b.scope)} />
         ))}
         {budgets.length === 0 && (
           <p class="hint">
@@ -84,7 +92,8 @@ export function SpendPage(props: {
         </h2>
         {props.entities.length === 0 ? (
           <p class="hint">
-            No spend data — set <code>ANTHROPIC_ADMIN_KEY</code> and wait for the daily poll.
+            No spend data — set <code>ANTHROPIC_ADMIN_KEY</code> or <code>OPENAI_ADMIN_KEY</code> and wait for the
+            daily poll, or record a prepaid balance in <a href="/settings">/settings</a>.
           </p>
         ) : (
           <table class="rows">
@@ -123,7 +132,7 @@ export function SpendPage(props: {
 }
 
 // Horizontal bar with soft/hard limit ticks (ux §2.3).
-function BudgetBar(props: { budget: BudgetRow; spent: number }) {
+function BudgetBar(props: { budget: BudgetRow; spent: number; label?: string }) {
   const { budget: b, spent } = props;
   const scale = Math.max(b.hard_limit * 1.1, spent, 0.01);
   const pct = (v: number) => `${Math.min(100, (v / scale) * 100)}%`;
@@ -131,7 +140,7 @@ function BudgetBar(props: { budget: BudgetRow; spent: number }) {
   return (
     <div class="budget">
       <span class="budget-label">
-        {b.scope === "*" ? "all entities" : b.scope} <span class="num">${spent.toFixed(2)}</span> / ${b.soft_limit} soft · ${b.hard_limit} hard ({b.period})
+        {b.scope === "*" ? "all entities" : (props.label ?? b.scope)} <span class="num">${spent.toFixed(2)}</span> / ${b.soft_limit} soft · ${b.hard_limit} hard ({b.period})
       </span>
       <div class="budget-bar">
         <div class="budget-fill" data-sev={sev} style={`width:${pct(spent)}`} />

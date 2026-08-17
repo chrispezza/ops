@@ -201,7 +201,21 @@ export const github: Poller = {
       const pat = tokenFor(owner);
       if (!pat) throw new Error(`github: no PAT for owner ${owner} (set GITHUB_PAT or a per-owner secret)`);
       for await (const repo of fetchRepos(pat, owner)) {
-        if (repo.isArchived) continue;
+        // An upstream-archived repo is marked archived here too — the entity
+        // page promises "archive it on GitHub and Ops follows on the next
+        // poll", and silently skipping left a zombie accruing staleness score.
+        // No signals for it: archived means frozen, not monitored.
+        if (repo.isArchived) {
+          entities.push({
+            id: `repo:${repo.nameWithOwner}`,
+            kind: "repo",
+            name: repo.name,
+            owner,
+            sourceUrl: repo.url,
+            archived: true,
+          });
+          continue;
+        }
         const id = `repo:${repo.nameWithOwner}`;
         const topics = repo.repositoryTopics.nodes.map((n) => n.topic.name);
         const category = topics.map((t) => TOPIC_CATEGORY[t]).find(Boolean);

@@ -1,4 +1,4 @@
-import { labelForMetric, TRIAGE_WEIGHTS, type TriageWeights } from "../config";
+import { labelForMetric, SEVERITY_NAMES, TRIAGE_WEIGHTS, type TriageWeights } from "../config";
 import type { EntityView, SignalRow } from "./queries";
 
 export interface ScorePart {
@@ -11,7 +11,7 @@ export interface Score {
   parts: ScorePart[]; // sorted by points desc — parts[0..1] are the "why" column
 }
 
-const SEV_WORDS = ["info", "low", "medium", "high", "critical"] as const;
+const SEV_WORDS = SEVERITY_NAMES; // one vocabulary — this said "info" where the dot said "ok"
 
 // Spec §4.1. usage30d is the summed usage.invocations over 30d, or null when
 // the entity's kind has no usage semantics at all.

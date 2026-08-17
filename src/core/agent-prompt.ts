@@ -20,7 +20,10 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
   }
   const streak = by("ci.fail_streak");
   if ((streak?.value_num ?? 0) >= 2) {
-    findings.push(`- ${streak?.value_num} consecutive CI failures — chronic, suspect a structural cause`);
+    // "chronic" only past the signal's own escalation threshold (github.ts
+    // flags the streak at ≥3) — the prompt was calling 2 chronic
+    const chronic = (streak?.value_num ?? 0) >= 3 ? " — chronic, suspect a structural cause" : "";
+    findings.push(`- ${streak?.value_num} consecutive CI failures${chronic}`);
   }
   const vulns = by("deps.vuln_count");
   if ((vulns?.value_num ?? 0) > 0) {

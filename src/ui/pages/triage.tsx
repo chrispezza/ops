@@ -34,8 +34,11 @@ export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; o
   return (
     <>
       <form class="filters" hx-get="/triage" hx-target="#triage-table" hx-select="#triage-table" hx-swap="outerHTML" hx-push-url="true">
-        <input type="search" name="q" placeholder="filter… ( / )" value={props.filters.q ?? ""} />
-        <select name="owner">
+        <input type="search" name="q" placeholder="filter… ( / )" value={props.filters.q ?? ""} aria-label="filter entities" />
+        {/* sort isn't a form control — without the hidden field, applying any
+            filter silently reset the sort the user had chosen */}
+        {props.filters.sort && <input type="hidden" name="sort" value={props.filters.sort} />}
+        <select name="owner" aria-label="owner">
           <option value="">all owners</option>
           {props.owners.map((o) => (
             <option value={o} selected={props.filters.owner === o}>
@@ -43,7 +46,7 @@ export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; o
             </option>
           ))}
         </select>
-        <select name="category">
+        <select name="category" aria-label="category">
           <option value="">all categories</option>
           {["static_site", "web_app", "plugin_skill", "tooling", "client_project", "vendor_api"].map((c) => (
             <option value={c} selected={props.filters.category === c}>
@@ -51,7 +54,7 @@ export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; o
             </option>
           ))}
         </select>
-        <select name="min_severity">
+        <select name="min_severity" aria-label="minimum severity">
           {[0, 1, 2, 3, 4].map((s) => (
             <option value={String(s)} selected={(props.filters.minSeverity ?? 0) === s}>
               sev ≥ {s}
@@ -86,7 +89,10 @@ export function TriageTable(props: { rows: TriageRow[]; filters: TriageFilters; 
         <th>kind</th>
         <th>top signal</th>
         <th>why</th>
-        <th class="num" title="score = worst severity ×10 + findings ≥medium ×2 + staleness (30d +3 / 90d +6) + zero-usage +5 — weights adjustable in /settings">
+        {/* no hardcoded numbers: the weights live in /settings, so a tooltip
+            quoting the defaults becomes a lie the moment they're edited —
+            per-row breakdowns (expand the "why") carry the real arithmetic */}
+        <th class="num" title="triage score: severity + breadth + staleness + zero-usage — weights in /settings, breakdown under each row's why">
           <a class={`sort ${sort === "score" ? "active" : ""}`} href={sortHref(props.filters, "score")}>
             score
           </a>

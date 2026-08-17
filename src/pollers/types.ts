@@ -12,6 +12,10 @@ export interface EntityUpsert {
   owner?: string;
   sourceUrl?: string;
   metadata?: Record<string, unknown>;
+  // One-way: true marks the entity archived (e.g. the repo was archived
+  // upstream). Pollers never clear it — unarchiving is a human act via the
+  // /archive form, so a poll can't clobber a manual "Archive in Ops".
+  archived?: true;
 }
 
 export interface SignalInsert {

@@ -2,8 +2,11 @@ import { DOMAIN_LABELS, labelForMetric } from "../../config";
 import { buildAgentPrompt } from "../../core/agent-prompt";
 import type { EntityRow, SignalRow } from "../../core/queries";
 import { Dot, ExtLink, formatSignalValue, safeHref, timeAgo } from "../components";
+import { Sparkline } from "./spend";
 
-const HISTORY_PAGE = 50;
+// Exported: index.tsx passes the same number to signalHistory — a drifted copy
+// would break load-more (dead button or silent truncation).
+export const HISTORY_PAGE = 50;
 
 // Hover detail for relative timestamps — "9m ago" alone doesn't say when.
 function isoMinute(epoch: number): string {
@@ -11,8 +14,13 @@ function isoMinute(epoch: number): string {
 }
 
 // Minimal min-max normalized polyline — the archive turned into a glance.
-export function TrendSpark(props: { points: { observed_at: number; value: number }[]; fmt?: (v: number) => string }) {
+export function TrendSpark(props: {
+  points: { observed_at: number; value: number }[];
+  days?: number; // window the points cover — the tooltip said "30d" regardless
+  fmt?: (v: number) => string;
+}) {
   const { points } = props;
+  const days = props.days ?? 30;
   const fmt = props.fmt ?? String;
   const w = 96;
   const h = 14;
@@ -29,8 +37,8 @@ export function TrendSpark(props: { points: { observed_at: number; value: number
   const range =
     min === max ? `steady at ${fmt(min)}` : `min ${fmt(min)} · max ${fmt(max)} · latest ${fmt(values[values.length - 1] ?? min)}`;
   return (
-    <svg class="trend" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`30d trend: ${range}`}>
-      <title>30d · {range}</title>
+    <svg class="trend" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${days}d trend: ${range}`}>
+      <title>{days}d · {range}</title>
       <path d={path} fill="none" stroke-width="1" />
     </svg>
   );
@@ -42,9 +50,10 @@ export function EntityPage(props: {
   history: SignalRow[];
   intervalSeries: { metric: string; points: { period_start: number; total: number }[] }[];
   trends: Map<string, { observed_at: number; value: number }[]>;
+  windowDays: number; // ?window=90 used to render 90 days of data labeled "30d"
   now: number;
 }) {
-  const { entity: e, now } = props;
+  const { entity: e, now, windowDays } = props;
   // Interval metrics (period-windowed) render as series; state metrics as latest-value rows.
   const stateSignals = props.latest.filter((s) => s.period_start == null);
   const domains = groupBy(stateSignals, (s) => s.metric.split(".")[0] ?? "other");
@@ -113,7 +122,7 @@ export function EntityPage(props: {
               <th />
               <th>metric</th>
               <th class="num">value</th>
-              <th>30d trend</th>
+              <th>{windowDays}d trend</th>
               <th>observed</th>
               <th />
             </tr>
@@ -140,6 +149,7 @@ export function EntityPage(props: {
                       {props.trends.has(s.metric) && (
                         <TrendSpark
                           points={props.trends.get(s.metric) ?? []}
+                          days={windowDays}
                           fmt={(v) => formatSignalValue({ ...s, value_num: v, value_text: null }, now)}
                         />
                       )}
@@ -156,9 +166,23 @@ export function EntityPage(props: {
         </section>
       )}
 
+      {domains.size === 0 && props.intervalSeries.length === 0 && (
+        <section class="section">
+          {/* spec §0.5: empty states teach — a fresh entity page was a header
+              floating over an empty audit trail with no explanation */}
+          <p class="hint">
+            No signals yet — the next poll fills this in, or push metrics via <code>POST /ingest</code> (see the
+            README). Check <a href="/health">/health</a> if nothing arrives.
+          </p>
+        </section>
+      )}
+
       {props.intervalSeries.map((series) => (
         <section class="section">
-          <h2>{series.metric}</h2>
+          {/* labelForMetric like every other view — this heading rendered raw
+              codes like "usage.tokens_in"; sparkline per spec §2.5 */}
+          <h2>{labelForMetric(series.metric)}</h2>
+          <Sparkline points={series.points} days={windowDays} now={now} label={labelForMetric(series.metric)} />
           <table class="rows">
             {series.points.map((p) => (
               <tr class="row">
@@ -172,7 +196,11 @@ export function EntityPage(props: {
 
       <section class="section">
         <h2>History</h2>
-        <HistoryRows entityId={e.id} history={props.history} offset={0} now={now} />
+        {props.history.length === 0 ? (
+          <p class="hint">Nothing recorded yet — every signal lands here as it arrives. This is the audit trail.</p>
+        ) : (
+          <HistoryRows entityId={e.id} history={props.history} offset={0} now={now} />
+        )}
       </section>
     </>
   );
@@ -191,7 +219,8 @@ function AgentPrompt(props: { entity: EntityRow; latest: SignalRow[]; now: numbe
       <textarea readonly rows={Math.min(24, prompt.split("\n").length + 1)}>
         {prompt}
       </textarea>
-      <button type="button" data-copy>
+      {/* aria-live: the button's own label is the copy/fallback feedback */}
+      <button type="button" data-copy aria-live="polite">
         copy prompt
       </button>
     </details>

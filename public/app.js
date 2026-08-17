@@ -4,10 +4,15 @@
 // Everything is delegated from document, so htmx fragment swaps keep working
 // without rebinding.
 
-// ux §5: "/" focuses the filter box.
+// ux §5: "/" focuses the filter box. First input in the filter form, not
+// input[name=q] — findings' filter is name=domain, and its placeholder was
+// advertising a shortcut that did nothing there. Modifier and contenteditable
+// guards keep a bare single-char shortcut from hijacking Cmd+/ or dictation
+// into an editable region (SC 2.1.4).
 document.addEventListener("keydown", function (e) {
-  if (e.key !== "/" || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
-  var input = document.querySelector("input[name=q]");
+  if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.target.isContentEditable) return;
+  var input = document.querySelector("form.filters input");
   if (!input) return;
   e.preventDefault();
   input.focus();
