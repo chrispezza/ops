@@ -142,10 +142,7 @@ function AgentPrompt(props: { entity: EntityRow; latest: SignalRow[]; now: numbe
       <textarea readonly rows={Math.min(24, prompt.split("\n").length + 1)}>
         {prompt}
       </textarea>
-      <button
-        type="button"
-        onclick="navigator.clipboard.writeText(this.closest('details').querySelector('textarea').value);this.textContent='copied'"
-      >
+      <button type="button" data-copy>
         copy prompt
       </button>
     </details>
@@ -176,7 +173,7 @@ export function HistoryRows(props: { entityId: string; history: SignalRow[]; off
       </table>
       {hasMore && (
         <button
-          hx-get={`/e/${props.entityId}?offset=${nextOffset}`}
+          hx-get={`/e/${encodeURIComponent(props.entityId)}?offset=${nextOffset}`}
           hx-target="this"
           hx-swap="outerHTML"
         >

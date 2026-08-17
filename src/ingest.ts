@@ -7,6 +7,8 @@ import type { EntityUpsert, SignalInsert } from "./pollers/types";
 // validation at the boundary, then the same store path as every poller.
 
 const MAX_ITEMS = 500;
+const DAY = 86_400;
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 // Ingest tokens are distributed to every CI pipeline in the portfolio, so the
 // comparison is constant-time: SHA-256 both sides to equal-length digests
 // (timingSafeEqual throws on a length mismatch) and compare those.
@@ -28,9 +30,34 @@ function validationError(path: string, message: string): string {
   return `${path}: ${message}`;
 }
 
+// Fields are copied explicitly below, so a misspelling used to store fine and do
+// nothing — `periodStart` instead of `period:{start,end}` returned 202 and left
+// period_start NULL, which surfaced much later as $0.00 on /spend. Rejecting
+// unrecognized keys keeps every currently-valid payload valid while turning a
+// silent no-op into an actionable 400.
+const ENTITY_FIELDS = new Set(["id", "kind", "name", "category", "owner", "sourceUrl", "metadata"]);
+const SIGNAL_FIELDS = new Set([
+  "entityId",
+  "metric",
+  "valueNum",
+  "valueText",
+  "severity",
+  "url",
+  "observedAt",
+  "period",
+  "dedupeKey",
+]);
+
+function unknownField(path: string, obj: Record<string, unknown>, allowed: Set<string>): string | undefined {
+  const unknown = Object.keys(obj).find((k) => !allowed.has(k));
+  return unknown ? validationError(path, `unknown field "${unknown}"`) : undefined;
+}
+
 function validatePayload(body: unknown): { payload?: IngestPayload; error?: string } {
   if (typeof body !== "object" || body === null) return { error: "body must be a JSON object" };
   const b = body as Record<string, unknown>;
+  const unknownTop = Object.keys(b).find((k) => k !== "entities" && k !== "signals");
+  if (unknownTop) return { error: `unknown field "${unknownTop}"` };
 
   const entities: EntityUpsert[] = [];
   if (b.entities !== undefined) {
@@ -44,6 +71,8 @@ function validatePayload(body: unknown): { payload?: IngestPayload; error?: stri
         return { error: validationError(path, 'id must be "{kind}:{natural_key}"') };
       if (typeof ent.kind !== "string" || !ent.kind) return { error: validationError(path, "kind required") };
       if (typeof ent.name !== "string" || !ent.name) return { error: validationError(path, "name required") };
+      const unknown = unknownField(path, ent, ENTITY_FIELDS);
+      if (unknown) return { error: unknown };
       entities.push({
         id: ent.id,
         kind: ent.kind,
@@ -66,16 +95,33 @@ function validatePayload(body: unknown): { payload?: IngestPayload; error?: stri
     if (typeof sig.entityId !== "string" || !sig.entityId) return { error: validationError(path, "entityId required") };
     if (typeof sig.metric !== "string" || !/^[a-z0-9_]+\.[a-z0-9_.]+$/.test(sig.metric))
       return { error: validationError(path, 'metric must be namespaced "<domain>.<name>"') };
-    if (typeof sig.observedAt !== "number") return { error: validationError(path, "observedAt (epoch seconds) required") };
+    if (typeof sig.observedAt !== "number" || !Number.isFinite(sig.observedAt))
+      return { error: validationError(path, "observedAt (epoch seconds) required") };
+    // Every "latest value" query is ORDER BY observed_at DESC and the retention
+    // sweep prunes on observed_at < cutoff, so a far-future timestamp pins a row
+    // as current forever and is never compacted. Clock skew is real, so allow a
+    // day of slack rather than demanding observedAt <= now.
+    if (sig.observedAt < 0 || sig.observedAt > nowSeconds() + DAY)
+      return { error: validationError(path, "observedAt is out of range (epoch seconds, not more than 1d ahead)") };
     if (typeof sig.dedupeKey !== "string" || !sig.dedupeKey) return { error: validationError(path, "dedupeKey required") };
+    const unknown = unknownField(path, sig, SIGNAL_FIELDS);
+    if (unknown) return { error: unknown };
     const severity = sig.severity ?? 0;
     if (typeof severity !== "number" || ![0, 1, 2, 3, 4].includes(severity))
       return { error: validationError(path, "severity must be 0-4") };
     let period: { start: number; end: number } | undefined;
     if (sig.period !== undefined) {
       const p = sig.period as Record<string, unknown>;
-      if (typeof p !== "object" || p === null || typeof p.start !== "number" || typeof p.end !== "number")
+      if (
+        typeof p !== "object" ||
+        p === null ||
+        typeof p.start !== "number" ||
+        typeof p.end !== "number" ||
+        !Number.isFinite(p.start) ||
+        !Number.isFinite(p.end)
+      )
         return { error: validationError(path, "period must be {start, end} epoch seconds") };
+      if (p.end < p.start) return { error: validationError(path, "period.end must not precede period.start") };
       period = { start: p.start, end: p.end };
     }
     signals.push({

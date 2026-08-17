@@ -316,3 +316,41 @@ describe("hostile URLs from ingest never become live links", () => {
     expect(detail).toContain("javascript:alert(1)");
   });
 });
+
+describe("response hardening", () => {
+  it("sends a CSP that forbids inline script, plus the companion headers", async () => {
+    const res = await SELF.fetch("https://ops.local/");
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).not.toContain("script-src 'self' 'unsafe-inline'"); // handlers live in /app.js
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("object-src 'none'");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
+  it("refuses a cross-origin POST to a mutating route", async () => {
+    const form = new FormData();
+    form.set("entity_id", "repo:clownware/gittunes");
+    form.set("archived", "1");
+    const res = await SELF.fetch("https://ops.local/archive", {
+      method: "POST",
+      body: form,
+      redirect: "manual",
+      headers: { origin: "https://evil.test" },
+    });
+    expect(res.status).toBe(403);
+
+    // and a bare curl with no Origin at all
+    const bare = await SELF.fetch("https://ops.local/health/run", { method: "POST", redirect: "manual" });
+    expect(bare.status).toBe(403);
+  });
+
+  it("survives junk numeric query params instead of 500ing", async () => {
+    await seedRepo();
+    expect((await SELF.fetch("https://ops.local/e/repo:clownware/gittunes?offset=x")).status).toBe(200);
+    expect((await SELF.fetch("https://ops.local/e/repo:clownware/gittunes?window=99999999")).status).toBe(200);
+    expect((await SELF.fetch("https://ops.local/findings?min_severity=nope")).status).toBe(200);
+    expect((await SELF.fetch("https://ops.local/settings?err=constructor")).status).toBe(200);
+  });
+});

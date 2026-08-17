@@ -61,7 +61,43 @@ app.use("*", async (c, next) => {
   return next();
 });
 
+// script-src omits 'unsafe-inline' deliberately: every handler lives in
+// /app.js so this is a real constraint rather than a decorative header, and it
+// is what contains a poisoned stored URL if one ever reaches an href.
+// 'unsafe-inline' remains for style-src only, because the spend bars set their
+// width through a style attribute; style attributes cannot execute script.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "object-src 'none'",
+].join("; ");
+
+app.use("*", async (c, next) => {
+  await next();
+  if (!c.res.headers.get("content-type")?.includes("text/html")) return;
+  c.res.headers.set("content-security-policy", CSP);
+  c.res.headers.set("x-content-type-options", "nosniff");
+  c.res.headers.set("referrer-policy", "no-referrer");
+  c.res.headers.set("x-frame-options", "DENY");
+});
+
 const epochNow = () => Math.floor(Date.now() / 1000);
+
+// Query params are bound as SQL params, so this is not an injection guard — it
+// stops `?offset=x` reaching LIMIT/OFFSET as NaN (500) and `?window=99999999`
+// widening a trend scan to the whole table.
+function clampParam(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const n = Number(raw ?? fallback);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(n)));
+}
 
 async function scoredViews(db: D1Database, now: number): Promise<TriageRow[]> {
   const [views, usage, weights] = await Promise.all([
@@ -140,7 +176,7 @@ app.get("/triage", async (c) => {
     kind: c.req.query("kind") || undefined,
     category: c.req.query("category") || undefined,
     owner: c.req.query("owner") || undefined,
-    minSeverity: Number(c.req.query("min_severity") ?? 0),
+    minSeverity: clampParam(c.req.query("min_severity"), 0, 0, 4),
     q: c.req.query("q") || undefined,
     sort: c.req.query("sort") || undefined,
   };
@@ -167,7 +203,7 @@ app.get("/e/*", async (c) => {
   const now = epochNow();
   const url = new URL(c.req.url);
   const id = decodeURIComponent(url.pathname.slice(3));
-  const offset = Number(c.req.query("offset") ?? 0);
+  const offset = clampParam(c.req.query("offset"), 0, 0, 1_000_000);
 
   const entity = await getEntity(c.env.DB, id);
   if (!entity) return c.notFound();
@@ -178,7 +214,7 @@ app.get("/e/*", async (c) => {
     return c.html(<HistoryRows entityId={id} history={history} offset={offset} now={now} />);
   }
 
-  const windowDays = Number(c.req.query("window") ?? 30);
+  const windowDays = clampParam(c.req.query("window"), 30, 1, 365);
   const latest = await latestSignals(c.env.DB, id);
   const intervalMetrics = latest.filter((s) => s.period_start != null).map((s) => s.metric);
   const intervalSeries = await Promise.all(
@@ -210,7 +246,7 @@ app.post("/archive", async (c) => {
 app.get("/findings", async (c) => {
   const now = epochNow();
   const filters = {
-    minSeverity: Number(c.req.query("min_severity") ?? 2), // ux §2.4 default
+    minSeverity: clampParam(c.req.query("min_severity"), 2, 0, 4), // ux §2.4 default
     domain: c.req.query("domain") || undefined,
     category: c.req.query("category") || undefined,
     group: c.req.query("group") || undefined,
@@ -290,7 +326,10 @@ app.get("/settings", async (c) => {
     getSetting<BalanceEntry[]>(c.env.DB, "balances"),
     pollerHealth(c.env.DB),
   ]);
-  const error = SETTINGS_ERRORS[c.req.query("err") ?? ""];
+  // hasOwn, not a bare index: `?err=constructor` otherwise resolves up the
+  // prototype chain and hands a function to the renderer.
+  const errKey = c.req.query("err") ?? "";
+  const error = Object.hasOwn(SETTINGS_ERRORS, errKey) ? SETTINGS_ERRORS[errKey] : undefined;
   return c.html(
     <Layout path="/settings" title="Settings" health={health} now={now}>
       <SettingsPage budgets={budgets} weights={weights ?? TRIAGE_WEIGHTS} balances={balances ?? []} error={error} />

@@ -10,7 +10,13 @@ export const EXPECTED_METRICS: Record<string, string[]> = {
   // usage.invocations returns here when invocation telemetry actually exists
   // (work-phase skill_usage poller) — expecting data no poller can provide
   // just inflates every skill repo with phantom findings.
-  plugin_skill: [],
+  //
+  // audit.finding_count is expected but eval.* deliberately is not: /skill-audit
+  // is static and cheap enough to run over every skill, while /skill-validate
+  // spawns blind agents against pinned ground truth and will only ever cover a
+  // deliberate subset. Demanding evals everywhere is exactly the phantom-finding
+  // trap above; they land as opt-in signals when a skill actually has one.
+  plugin_skill: ["audit.finding_count"],
   tooling: [], // templates/libs/experiments — categorized, but nothing is demanded of them
   client_project: [], // mixed shapes; per-repo expectations don't generalize
 };
@@ -32,6 +38,15 @@ export const METRIC_LABELS: Record<string, string> = {
   "lhci.performance": "Lighthouse perf",
   "tests.coverage_pct": "test coverage",
   "audit.vuln_count": "audit vulns",
+  "audit.finding_count": "audit findings",
+  // /skill-validate scores: reproduction of known-true findings, restraint on the
+  // clean twin, and adherence to the skill's own procedure. age_days is the one
+  // that matters most — a green score against a since-rewritten SKILL.md reads as
+  // reassurance while proving nothing, so staleness has to be visible next to it.
+  "eval.reproduction_pct": "eval reproduction",
+  "eval.false_positive_pct": "eval false positives",
+  "eval.protocol_fidelity_pct": "eval protocol fidelity",
+  "eval.age_days": "eval age",
   "site.up": "site status",
   "site.response_ms": "site response",
   "usage.invocations": "invocations 30d",
@@ -78,6 +93,7 @@ export const DOMAIN_LABELS: Record<string, string> = {
   lhci: "Lighthouse",
   tests: "Tests",
   audit: "Audit",
+  eval: "Evals",
   usage: "Usage",
   spend: "Spend",
   balance: "Balance",

@@ -47,14 +47,8 @@ export function Layout(props: {
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="stylesheet" href="/tokens.css" />
         <script src="/htmx.min.js" defer></script>
-        {/* ux §5: "/" focuses the filter box; ux §2.1: row click navigates to the entity */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              "document.addEventListener('keydown',function(e){if(e.key==='/'&&!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)){var i=document.querySelector('input[name=q]');if(i){e.preventDefault();i.focus()}}});" +
-              "document.addEventListener('click',function(e){var r=e.target.closest('tr[data-href]');if(!r)return;if(e.target.closest('a,button,form,input,select,details,summary'))return;location.href=r.dataset.href});",
-          }}
-        ></script>
+        {/* keyboard, row-click, copy and busy-submit behaviour — external so the CSP needs no 'unsafe-inline' */}
+        <script src="/app.js" defer></script>
       </head>
       <body>
         <nav class="top">
