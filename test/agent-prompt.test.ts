@@ -93,3 +93,38 @@ describe("entity page agent prompt block", () => {
     expect(healthy).not.toContain("agent-prompt");
   });
 });
+
+describe("expanded finding coverage (issue #24)", () => {
+  it("a down site produces a prompt even with green CI, and leads it", () => {
+    const prompt = buildAgentPrompt(
+      repo,
+      [
+        sig("ci.status", null, 0, "success"),
+        sig("site.up", 0, 3, "down", "https://gittunes.example"),
+      ],
+      NOW,
+    );
+    expect(prompt).toBeTruthy();
+    expect(prompt).toContain("the deployed site is DOWN — https://gittunes.example — highest priority");
+    expect(prompt).toContain("site.up = up");
+    // severity order: the site finding precedes any CI mention in the approach
+    expect(prompt!.indexOf("DOWN")).toBeLessThan(prompt!.indexOf("CI failure"));
+  });
+
+  it("covers lighthouse, docs gaps and expected-but-missing metrics", () => {
+    const prompt = buildAgentPrompt(
+      repo,
+      [
+        sig("lhci.performance", 61, 2, null, "https://ci.example/lhci"),
+        sig("docs.score", 50, 1, "missing: CLAUDE.md, license"),
+        sig("hygiene.missing.lhci.performance", null, 1),
+      ],
+      NOW,
+    );
+    expect(prompt).toContain("Lighthouse performance is 61");
+    expect(prompt).toContain("documentation gaps — missing: CLAUDE.md, license");
+    expect(prompt).toContain("expected metrics never reported: lhci.performance");
+    expect(prompt).toContain("docs.score = 100");
+    expect(prompt).toContain("POST /ingest");
+  });
+});
