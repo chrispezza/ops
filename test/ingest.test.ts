@@ -121,3 +121,59 @@ describe("/findings", () => {
     expect(grouped).not.toContain("seo.score");
   });
 });
+
+describe("ingest payload strictness", () => {
+  it("rejects unrecognized fields instead of silently dropping them", async () => {
+    // the real bug: periodStart stored fine, left period_start NULL, and showed
+    // up much later as $0.00 on /spend
+    const res = await post({
+      signals: [
+        {
+          entityId: "repo:clownware/gittunes",
+          metric: "spend.usd",
+          valueNum: 12,
+          observedAt: NOW,
+          dedupeKey: "d",
+          periodStart: NOW - 86_400,
+        },
+      ],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json<{ error: string }>()).error).toContain('unknown field "periodStart"');
+  });
+
+  it("rejects unknown entity and top-level fields", async () => {
+    const ent = await post({
+      entities: [{ id: "repo:a/b", kind: "repo", name: "b", homepage: "https://x.test" }],
+      signals: validPayload.signals,
+    });
+    expect(ent.status).toBe(400);
+    expect((await ent.json<{ error: string }>()).error).toContain('unknown field "homepage"');
+
+    const top = await post({ ...validPayload, extra: 1 });
+    expect(top.status).toBe(400);
+  });
+
+  it("rejects observedAt far in the future so it cannot pin latest or evade retention", async () => {
+    const future = await post({
+      signals: [{ ...validPayload.signals[0], observedAt: NOW + 400 * 86_400, dedupeKey: "future" }],
+    });
+    expect(future.status).toBe(400);
+    expect((await future.json<{ error: string }>()).error).toContain("out of range");
+
+    // an hour of clock skew is still accepted
+    const skewed = await post({
+      entities: validPayload.entities,
+      signals: [{ ...validPayload.signals[0], observedAt: NOW + 3600, dedupeKey: "skew" }],
+    });
+    expect(skewed.status).toBe(202);
+  });
+
+  it("rejects a period whose end precedes its start", async () => {
+    const res = await post({
+      entities: validPayload.entities,
+      signals: [{ ...validPayload.signals[0], period: { start: NOW, end: NOW - 10 }, dedupeKey: "p" }],
+    });
+    expect(res.status).toBe(400);
+  });
+});

@@ -30,7 +30,7 @@ export function formatSignalValue(
   if (s.metric === "repo.pushed_at") return `${timeAgo(n, now)} ago`;
   if (s.metric.startsWith("spend.") || s.metric === "budget.status" || s.metric === "balance.usd")
     return `$${n.toFixed(2)}`;
-  if (s.metric === "usage.cap_pct" || s.metric === "cf.error_rate") return `${n}%`;
+  if (s.metric.endsWith("_pct") || s.metric === "cf.error_rate") return `${n}%`;
   if (s.metric.endsWith("_bytes")) return n >= 1e9 ? `${(n / 1e9).toFixed(2)}GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}MB` : `${Math.round(n / 1e3)}kB`;
   if (s.metric.endsWith("_ms")) return n >= 60_000 ? `${Math.floor(n / 60_000)}m${Math.round((n % 60_000) / 1000)}s` : `${Math.round(n / 1000)}s`;
   if (s.metric.endsWith("_days")) return `${n}d`;
