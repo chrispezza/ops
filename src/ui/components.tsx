@@ -53,19 +53,34 @@ export function timeAgo(epoch: number, now: number): string {
 }
 
 // A metric rendered compactly; missing expected metrics render as a warning "—" (ux §2.1).
-export function Chip(props: { label: string; signal?: SignalRow; now: number; render?: (s: SignalRow) => string }) {
+export function Chip(props: {
+  label: string;
+  signal?: SignalRow;
+  now: number;
+  render?: (s: SignalRow) => string;
+  // ids of sources currently hard-failing — their values render dimmed, never
+  // hidden (spec §3): the number stays, visibly demoted, with the age in the title
+  staleSources?: ReadonlySet<string>;
+}) {
   const { label, signal, now } = props;
   if (!signal) {
     return (
-      <span class="chip missing" title={`${label}: no data`}>
+      // teach, don't dead-end (spec §0.5): missing expected metrics arrive from
+      // a poller or from CI via POST /ingest
+      <span class="chip missing" title={`${label}: no data — arrives from a poller or via POST /ingest (see README)`}>
         {label} —
       </span>
     );
   }
+  const stale = props.staleSources?.has(signal.source) ?? false;
   const text = props.render ? props.render(signal) : formatSignalValue(signal, now);
   const sev = signal.severity;
   const body = (
-    <span class="chip" data-sev={sev} title={`${label} · observed ${timeAgo(signal.observed_at, now)} ago`}>
+    <span
+      class={stale ? "chip stale-data" : "chip"}
+      data-sev={stale ? undefined : sev}
+      title={`${label} · observed ${timeAgo(signal.observed_at, now)} ago${stale ? " · source failing — value may be stale" : ""}`}
+    >
       {label} {text}
       {sev >= 2 ? "▲" : ""}
     </span>
