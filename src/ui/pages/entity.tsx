@@ -5,9 +5,15 @@ import { Dot, ExtLink, formatSignalValue, safeHref, timeAgo } from "../component
 
 const HISTORY_PAGE = 50;
 
+// Hover detail for relative timestamps — "9m ago" alone doesn't say when.
+function isoMinute(epoch: number): string {
+  return `${new Date(epoch * 1000).toISOString().replace("T", " ").slice(0, 16)} UTC`;
+}
+
 // Minimal min-max normalized polyline — the archive turned into a glance.
-export function TrendSpark(props: { points: { observed_at: number; value: number }[] }) {
+export function TrendSpark(props: { points: { observed_at: number; value: number }[]; fmt?: (v: number) => string }) {
   const { points } = props;
+  const fmt = props.fmt ?? String;
   const w = 96;
   const h = 14;
   const values = points.map((p) => p.value);
@@ -18,8 +24,13 @@ export function TrendSpark(props: { points: { observed_at: number; value: number
   const path = points
     .map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(h - 1 - ((p.value - min) / span) * (h - 2)).toFixed(1)}`)
     .join(" ");
+  // A normalized line hides its scale by design; the tooltip restores it — in
+  // the metric's own units, since "min 310000" explains nothing about a _ms metric.
+  const range =
+    min === max ? `steady at ${fmt(min)}` : `min ${fmt(min)} · max ${fmt(max)} · latest ${fmt(values[values.length - 1] ?? min)}`;
   return (
-    <svg class="trend" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="30d trend">
+    <svg class="trend" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`30d trend: ${range}`}>
+      <title>30d · {range}</title>
       <path d={path} fill="none" stroke-width="1" />
     </svg>
   );
@@ -81,31 +92,69 @@ export function EntityPage(props: {
 
       <AgentPrompt entity={e} latest={props.latest} now={now} />
 
-      {[...domains.entries()].map(([domain, signals]) => (
+      {/* One table for every domain, not a table per domain: with per-section
+          tables the browser sizes columns from each section's content, so the
+          value column landed at a different x in every group and nothing lined
+          up. A single fixed-layout table makes misalignment impossible, and one
+          header row labels the columns for all groups. Domain rows carry no
+          .row class, so the existing mobile collapse hides them for free. */}
+      {domains.size > 0 && (
         <section class="section">
-          <h2>{DOMAIN_LABELS[domain] ?? domain}</h2>
-          <table class="rows">
-            {signals.map((s) => (
-              <tr class="row">
-                <td class="c-dot">
-                  <Dot severity={s.severity} />
-                </td>
-                <td class="c-name" title={s.metric}>
-                  {labelForMetric(s.metric)}
-                </td>
-                <td class="num" title={s.value_num != null && s.value_text ? s.value_text : undefined}>
-                  {formatSignalValue(s, now)}
-                </td>
-                <td class="c-trend">
-                  {props.trends.has(s.metric) && <TrendSpark points={props.trends.get(s.metric) ?? []} />}
-                </td>
-                <td class="c-kind">{timeAgo(s.observed_at, now)} ago</td>
-                <td class="c-links"><ExtLink url={s.url} /></td>
-              </tr>
+          <table class="rows metrics">
+            <colgroup>
+              <col class="w-dot" />
+              <col />
+              <col class="w-val" />
+              <col class="w-trend" />
+              <col class="w-obs" />
+              <col class="w-links" />
+            </colgroup>
+            <tr>
+              <th />
+              <th>metric</th>
+              <th class="num">value</th>
+              <th>30d trend</th>
+              <th>observed</th>
+              <th />
+            </tr>
+            {[...domains.entries()].map(([domain, signals]) => (
+              <>
+                <tr class="domain">
+                  <th colspan={6}>{DOMAIN_LABELS[domain] ?? domain}</th>
+                </tr>
+                {signals.map((s) => (
+                  <tr class="row">
+                    <td class="c-dot">
+                      <Dot severity={s.severity} />
+                    </td>
+                    <td class="c-name" title={s.metric}>
+                      {labelForMetric(s.metric)}
+                    </td>
+                    {/* value_text as title whenever present: it is both the raw
+                        detail behind a formatted number and the recovery for a
+                        text value the fixed column truncates */}
+                    <td class="num" title={s.value_text ?? undefined}>
+                      {formatSignalValue(s, now)}
+                    </td>
+                    <td class="c-trend">
+                      {props.trends.has(s.metric) && (
+                        <TrendSpark
+                          points={props.trends.get(s.metric) ?? []}
+                          fmt={(v) => formatSignalValue({ ...s, value_num: v, value_text: null }, now)}
+                        />
+                      )}
+                    </td>
+                    <td class="c-kind" title={isoMinute(s.observed_at)}>
+                      {timeAgo(s.observed_at, now)} ago
+                    </td>
+                    <td class="c-links"><ExtLink url={s.url} /></td>
+                  </tr>
+                ))}
+              </>
             ))}
           </table>
         </section>
-      ))}
+      )}
 
       {props.intervalSeries.map((series) => (
         <section class="section">

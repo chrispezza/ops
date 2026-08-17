@@ -94,6 +94,10 @@ describe("entity page", () => {
     expect(html).toContain("gittunes");
     expect(html).toContain("ci.status");
     expect(html).toContain("History");
+    // one fixed-geometry table for all domains: labeled columns + group rows
+    expect(html).toContain(">30d trend<");
+    expect(html).toContain(">observed<");
+    expect(html).toContain('class="domain"');
 
     // archive → out of the working sections, into the collapsed Archived section
     const form = new FormData();

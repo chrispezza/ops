@@ -32,7 +32,14 @@ export function formatSignalValue(
     return `$${n.toFixed(2)}`;
   if (s.metric.endsWith("_pct") || s.metric === "cf.error_rate") return `${n}%`;
   if (s.metric.endsWith("_bytes")) return n >= 1e9 ? `${(n / 1e9).toFixed(2)}GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}MB` : `${Math.round(n / 1e3)}kB`;
-  if (s.metric.endsWith("_ms")) return n >= 60_000 ? `${Math.floor(n / 60_000)}m${Math.round((n % 60_000) / 1000)}s` : `${Math.round(n / 1000)}s`;
+  // sub-second values used to collapse to "0s" — a 180ms site response is a
+  // good number that rendered as a broken-looking one
+  if (s.metric.endsWith("_ms"))
+    return n >= 60_000
+      ? `${Math.floor(n / 60_000)}m${Math.round((n % 60_000) / 1000)}s`
+      : n >= 1000
+        ? `${Math.round(n / 1000)}s`
+        : `${Math.round(n)}ms`;
   if (s.metric.endsWith("_days")) return `${n}d`;
   if (s.metric.startsWith("usage.tokens")) return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(0)}k` : String(n);
   return String(n);
@@ -78,7 +85,8 @@ export function safeHref(url: string | null | undefined): string | undefined {
 // stored URL fails safeHref, so a poisoned row loses its link, not the page.
 export function ExtLink(props: { url: string | null | undefined; children?: unknown }) {
   const href = safeHref(props.url);
-  return href ? <a href={href}>{props.children ?? "↗"}</a> : null;
+  // title = destination: a bare "↗" gives no clue where it goes until hover
+  return href ? <a href={href} title={href}>{props.children ?? "↗"}</a> : null;
 }
 
 export function newIssueUrl(sourceUrl: string): string | undefined {

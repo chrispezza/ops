@@ -339,6 +339,26 @@ svg.spark .spark-bar.today { fill: none; stroke: hsl(var(--accent)); stroke-widt
 svg.trend path { stroke: hsl(var(--fg-muted)); }
 td.c-trend { width: 104px; }
 
+/* Entity metrics: one fixed-layout table for every domain so the value, trend
+   and observed columns sit at the same x in every group — auto layout sized
+   them per-section from content, which read as random. */
+table.metrics { table-layout: fixed; }
+table.metrics col.w-dot { width: 24px; }
+table.metrics col.w-val { width: 170px; } /* fits "tagged static_site" in mono */
+table.metrics col.w-trend { width: 104px; }
+table.metrics col.w-obs { width: 88px; }
+table.metrics col.w-links { width: 44px; }
+table.metrics td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.metrics tr.domain th {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: hsl(var(--fg-muted));
+  border-bottom: 1px solid hsl(var(--border));
+  padding: var(--space-5) var(--space-2) var(--space-1);
+}
+
 .budget { margin-bottom: var(--space-2); font-size: var(--text-sm); }
 .budget-label { display: block; margin-bottom: var(--space-1); }
 .budget-bar { position: relative; height: 10px; background: hsl(var(--bg-sunken)); border: 1px solid hsl(var(--border)); max-width: 480px; }
@@ -443,4 +463,18 @@ tr.cluster-cont td { border-top-color: transparent; } /* clustered findings read
   td.c-links { order: 4; }
   td.c-chips { order: 9; flex-basis: 100%; white-space: normal; }
   td.c-why { order: 10; flex-basis: 100%; }
+  /* sparkline had no order, so it defaulted to 0 and rendered before the
+     metric name; empty trend cells otherwise still contribute flex gaps */
+  td.c-trend { order: 5; }
+  td.c-trend:empty { display: none; }
+
+  /* the domain group rows replaced the per-section h2s, so unlike the column
+     header they must survive the collapse — without this, mobile loses the
+     CI / Dependencies / Site grouping entirely */
+  table.metrics tr.domain { display: block; }
+  table.metrics tr.domain th {
+    display: block;
+    padding: var(--space-4) 0 var(--space-1);
+    border-bottom: none;
+  }
 }
