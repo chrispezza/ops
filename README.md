@@ -149,13 +149,32 @@ account, and redeploy.
 
 ### Access control
 
-**Ops has no application-level login. Put [Cloudflare
+**Ops has no username-and-password login of its own. Put [Cloudflare
 Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) in
 front of the Worker before you put anything real in it.** The dashboard assumes
 every reader is you.
 
-Two things are enforced in the app itself as defense-in-depth, so a
+Three things are enforced in the app itself as defense-in-depth, so a
 misconfigured Access policy is not instantly catastrophic:
+
+- **Access assertion verification (opt-in).** Set `ACCESS_TEAM_DOMAIN` and
+  `ACCESS_AUD` in `wrangler.jsonc` and the Worker verifies the
+  `Cf-Access-Jwt-Assertion` signature against your team's public keys on every
+  request, checking `aud`, `iss` and expiry, with the algorithm pinned to RS256
+  so `alg=none` and alg-confusion are rejected rather than trusted. Without it,
+  "Access is in front of this" is an assumption the app cannot check — and a
+  Worker stays reachable on its `workers.dev` hostname regardless of any
+  zone-level policy. Leave either var empty to keep it dormant.
+
+  `ACCESS_TEAM_DOMAIN` is the team name from `<team>.cloudflareaccess.com`.
+  `ACCESS_AUD` is the Application Audience tag under Zero Trust → Access →
+  Applications → your app → Overview. Confirm the keys resolve before you rely
+  on it:
+
+  ```sh
+  curl -s "https://<team>.cloudflareaccess.com/cdn-cgi/access/certs" | jq '.keys | length'
+  ```
+
 
 - **Same-origin gate.** Every state-mutating `POST` requires an `Origin` header
   matching the deployment. That blocks cross-site request forgery and, because

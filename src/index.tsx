@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
+import { verifyAccessJwt } from "./core/access";
 import { EXPECTED_METRICS, TRIAGE_WEIGHTS, type TriageWeights } from "./config";
 import {
   type BalanceEntry,
@@ -45,6 +47,23 @@ const DAILY_CRON = "0 10 * * *";
 const DAY = 86_400;
 
 const app = new Hono<{ Bindings: Env }>();
+
+// Verify the Access assertion before anything else — authentication precedes
+// the CSRF gate below. Dormant unless both vars are set, so an unconfigured
+// deployment is unchanged; configured, every route fails closed except /ingest,
+// which authenticates itself with a bearer token because CI reaches it through
+// a service token or a bypass policy rather than a browser login.
+app.use("*", async (c, next) => {
+  const teamDomain = c.env.ACCESS_TEAM_DOMAIN;
+  const aud = c.env.ACCESS_AUD;
+  if (!teamDomain || !aud) return next();
+  if (new URL(c.req.url).pathname === "/ingest") return next();
+
+  const assertion = c.req.header("cf-access-jwt-assertion") ?? getCookie(c, "CF_Authorization");
+  const result = await verifyAccessJwt(assertion, teamDomain, aud);
+  if (!result.ok) return c.text(`access denied: ${result.reason}`, 403);
+  return next();
+});
 
 // Same-origin gate on every state-mutating request. Browsers always send Origin
 // on POST, so a match proves the request came from a page served by this
