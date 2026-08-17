@@ -14,6 +14,7 @@ describe("formatSignalValue", () => {
     expect(formatSignalValue(sig("budget.status", 36.505), NOW)).toBe("$36.51");
     expect(formatSignalValue(sig("ci.duration_ms", 312_000), NOW)).toBe("5m12s");
     expect(formatSignalValue(sig("ci.duration_ms", 42_000), NOW)).toBe("42s");
+    expect(formatSignalValue(sig("site.response_ms", 180), NOW)).toBe("180ms"); // was "0s"
     expect(formatSignalValue(sig("release.age_days", 12), NOW)).toBe("12d");
     expect(formatSignalValue(sig("usage.tokens_in", 1_234_567), NOW)).toBe("1.2M");
     expect(formatSignalValue(sig("usage.tokens_out", 45_000), NOW)).toBe("45k");
