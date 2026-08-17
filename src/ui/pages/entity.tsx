@@ -51,9 +51,11 @@ export function EntityPage(props: {
   intervalSeries: { metric: string; points: { period_start: number; total: number }[] }[];
   trends: Map<string, { observed_at: number; value: number }[]>;
   windowDays: number; // ?window=90 used to render 90 days of data labeled "30d"
+  stale?: ReadonlySet<string>;
   now: number;
 }) {
   const { entity: e, now, windowDays } = props;
+  const staleSet = props.stale ?? new Set<string>();
   // Interval metrics (period-windowed) render as series; state metrics as latest-value rows.
   const stateSignals = props.latest.filter((s) => s.period_start == null);
   const domains = groupBy(stateSignals, (s) => s.metric.split(".")[0] ?? "other");
@@ -119,12 +121,12 @@ export function EntityPage(props: {
               <col class="w-links" />
             </colgroup>
             <tr>
-              <th />
-              <th>metric</th>
-              <th class="num">value</th>
-              <th>{windowDays}d trend</th>
-              <th>observed</th>
-              <th />
+              <th scope="col" />
+              <th scope="col">metric</th>
+              <th scope="col" class="num">value</th>
+              <th scope="col">{windowDays}d trend</th>
+              <th scope="col">observed</th>
+              <th scope="col" />
             </tr>
             {[...domains.entries()].map(([domain, signals]) => (
               <>
@@ -141,8 +143,12 @@ export function EntityPage(props: {
                     </td>
                     {/* value_text as title whenever present: it is both the raw
                         detail behind a formatted number and the recovery for a
-                        text value the fixed column truncates */}
-                    <td class="num" title={s.value_text ?? undefined}>
+                        text value the fixed column truncates. stale-data = the
+                        source poller is failing (spec §3: dimmed, never hidden) */}
+                    <td
+                      class={staleSet.has(s.source) ? "num stale-data" : "num"}
+                      title={`${s.value_text ?? ""}${staleSet.has(s.source) ? " · source failing — value may be stale" : ""}`.trim() || undefined}
+                    >
                       {formatSignalValue(s, now)}
                     </td>
                     <td class="c-trend">

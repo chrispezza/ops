@@ -19,16 +19,16 @@ export function HealthPage(props: { health: PollerHealth[]; now: number }) {
       ) : (
         <table class="rows">
           <tr>
-            <th />
-            <th>poller</th>
-            <th>last run</th>
-            <th>last success</th>
-            <th class="num">duration</th>
-            <th class="num">entities</th>
-            <th class="num">signals</th>
+            <th scope="col" />
+            <th scope="col">poller</th>
+            <th scope="col">last run</th>
+            <th scope="col">last success</th>
+            <th scope="col" class="num">duration</th>
+            <th scope="col" class="num">entities</th>
+            <th scope="col" class="num">signals</th>
             {/* "detail", not "error" — this column also holds the calm
                 "unconfigured: set X" states, which are not errors */}
-            <th>detail</th>
+            <th scope="col">detail</th>
           </tr>
           {health.map((h) => {
             const detail = parseDetail(h.lastRun?.value_text);

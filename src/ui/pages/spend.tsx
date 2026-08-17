@@ -53,6 +53,8 @@ export function Sparkline(props: {
 
 export function SpendPage(props: {
   entities: SpendEntity[];
+  allEntities: SpendEntity[]; // unfiltered — budget-bar labels must resolve even under ?entity=
+  entityFilter?: string;
   budgets: (BudgetRow & { spent: number })[]; // period-correct, from budgetSpent()
   orgMtd: number;
   windowDays: number;
@@ -62,7 +64,8 @@ export function SpendPage(props: {
   const { budgets, orgMtd, now } = props;
   // budget scopes are entity ids — label bars with the display name the
   // by-entity table already uses, not "vendor_api:anthropic"
-  const names = new Map(props.entities.map((e) => [e.id, e.name]));
+  const names = new Map(props.allEntities.map((e) => [e.id, e.name]));
+  const windowHref = (w: string) => `/spend?window=${w}${props.entityFilter ? `&entity=${encodeURIComponent(props.entityFilter)}` : ""}`;
   return (
     <>
       <section class="section">
@@ -83,11 +86,17 @@ export function SpendPage(props: {
           By entity
           <span class="rollup">
             {(["30d", "90d", "mtd"] as const).map((w) => (
-              <a href={`/spend?window=${w}`} class={props.window === w ? "active" : ""}>
+              <a href={windowHref(w)} class={props.window === w ? "active" : ""}>
                 {" "}
                 {w}
               </a>
             ))}
+            {props.entityFilter && (
+              <>
+                {" "}
+                · showing {names.get(props.entityFilter) ?? props.entityFilter} — <a href={`/spend?window=${props.window}`}>all entities</a>
+              </>
+            )}
           </span>
         </h2>
         {props.entities.length === 0 ? (

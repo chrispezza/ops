@@ -1,13 +1,23 @@
 import type { TriageWeights } from "../../config";
 import type { BalanceEntry, BudgetRow } from "../../core/derive";
 
+// A rejected form re-renders with what the user typed — the old redirect-with
+// ?err= flow blanked every field on failure.
+export interface SettingsDraft {
+  budget?: { scope: string; period: string; soft: string; hard: string };
+  balance?: { entityId: string; name: string; startingUsd: string; asOf: string };
+}
+
 // The only writes to Ops-owned data (ux §2.7): budgets, triage weights, balances.
 export function SettingsPage(props: {
   budgets: BudgetRow[];
   weights: TriageWeights;
   balances: BalanceEntry[];
   error?: string;
+  draft?: SettingsDraft;
 }) {
+  const draftBudget = props.draft?.budget;
+  const draftBalance = props.draft?.balance;
   const w = props.weights;
   const staleness90 = w.staleness.find((t) => t.minDays === 90)?.points ?? 6;
   const staleness30 = w.staleness.find((t) => t.minDays === 30)?.points ?? 3;
@@ -19,12 +29,12 @@ export function SettingsPage(props: {
         {props.budgets.length > 0 && (
           <table class="rows">
             <tr>
-              <th>scope</th>
-              <th>metric</th>
-              <th>period</th>
-              <th class="num">soft</th>
-              <th class="num">hard</th>
-              <th />
+              <th scope="col">scope</th>
+              <th scope="col">metric</th>
+              <th scope="col">period</th>
+              <th scope="col" class="num">soft</th>
+              <th scope="col" class="num">hard</th>
+              <th scope="col" />
             </tr>
             {props.budgets.map((b) => (
               <tr class="row">
@@ -47,20 +57,20 @@ export function SettingsPage(props: {
             vanish on input and screen readers get nothing from a bare select */}
         <form method="post" action="/settings/budgets" class="filters">
           <label>
-            scope <input name="scope" placeholder='"*", kind, or entity id' required />
+            scope <input name="scope" placeholder='"*", kind, or entity id' value={draftBudget?.scope ?? ""} required />
           </label>
           <label>
             period{" "}
             <select name="period">
-              <option value="month">month</option>
-              <option value="day">day</option>
+              <option value="month" selected={draftBudget?.period !== "day"}>month</option>
+              <option value="day" selected={draftBudget?.period === "day"}>day</option>
             </select>
           </label>
           <label>
-            soft $ <input name="soft_limit" type="number" step="0.01" min="0" required />
+            soft $ <input name="soft_limit" type="number" step="0.01" min="0" value={draftBudget?.soft ?? ""} required />
           </label>
           <label>
-            hard $ <input name="hard_limit" type="number" step="0.01" min="0" required />
+            hard $ <input name="hard_limit" type="number" step="0.01" min="0" value={draftBudget?.hard ?? ""} required />
           </label>
           <button type="submit">add budget</button>
         </form>
@@ -72,11 +82,11 @@ export function SettingsPage(props: {
         {props.balances.length > 0 && (
           <table class="rows">
             <tr>
-              <th>entity</th>
-              <th>name</th>
-              <th class="num">starting</th>
-              <th>as of</th>
-              <th />
+              <th scope="col">entity</th>
+              <th scope="col">name</th>
+              <th scope="col" class="num">starting</th>
+              <th scope="col">as of</th>
+              <th scope="col" />
             </tr>
             {props.balances.map((b) => (
               <tr class="row">
@@ -96,18 +106,18 @@ export function SettingsPage(props: {
         )}
         <form method="post" action="/settings/balances" class="filters">
           <label>
-            entity id <input name="entity_id" placeholder="vendor_api:xai" required />
+            entity id <input name="entity_id" placeholder="vendor_api:xai" value={draftBalance?.entityId ?? ""} required />
           </label>
           <label>
-            name <input name="name" placeholder="xAI" required />
+            name <input name="name" placeholder="xAI" value={draftBalance?.name ?? ""} required />
           </label>
           <label>
-            starting $ <input name="starting_usd" type="number" step="0.01" min="0" required />
+            starting $ <input name="starting_usd" type="number" step="0.01" min="0" value={draftBalance?.startingUsd ?? ""} required />
           </label>
           {/* date inputs never render placeholders — without the label this
               was an anonymous mm/dd/yyyy box */}
           <label>
-            as of <input name="as_of" type="date" required />
+            as of <input name="as_of" type="date" value={draftBalance?.asOf ?? ""} required />
           </label>
           <button type="submit">add balance</button>
         </form>

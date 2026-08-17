@@ -358,3 +358,24 @@ describe("response hardening", () => {
     expect((await SELF.fetch("https://ops.local/settings?err=constructor")).status).toBe(200);
   });
 });
+
+describe("settings draft preservation", () => {
+  it("re-renders a rejected budget form with the typed values intact", async () => {
+    const form = new FormData();
+    form.set("scope", "repo:a/b");
+    form.set("period", "month");
+    form.set("soft_limit", "100");
+    form.set("hard_limit", "50"); // hard < soft → rejected
+    const res = await SELF.fetch("https://ops.local/settings/budgets", {
+      method: "POST",
+      body: form,
+      redirect: "manual",
+      headers: { origin: "https://ops.local" },
+    });
+    expect(res.status).toBe(400); // no redirect — the draft renders in place
+    const html = await res.text();
+    expect(html).toContain("Budget not saved");
+    expect(html).toContain('value="repo:a/b"'); // what the user typed survives
+    expect(html).toContain('value="50"');
+  });
+});

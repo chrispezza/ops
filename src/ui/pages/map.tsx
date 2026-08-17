@@ -21,11 +21,14 @@ export function MapPage(props: {
   archived: ArchivedEntity[];
   q?: string;
   owner?: string;
+  category?: string; // ux §1: /?category=web_app narrows to one section
   owners: string[];
+  stale: ReadonlySet<string>;
   now: number;
 }) {
-  const { rows, now } = props;
+  const { rows, now, stale } = props;
   if (rows.length === 0 && !props.q && !props.owner) return <SetupChecklist />;
+  const sections = props.category ? SECTIONS.filter((s) => s.category === props.category) : SECTIONS;
 
   const known = new Set(SECTIONS.map((s) => s.category));
   // Portfolio sections hold repos; vendor/spend entities get their own section;
@@ -43,6 +46,7 @@ export function MapPage(props: {
         {/* the owner toggle is anchors, not a field — without this hidden input,
             submitting the filter silently dropped the active owner scope */}
         {props.owner && <input type="hidden" name="owner" value={props.owner} />}
+        {props.category && <input type="hidden" name="category" value={props.category} />}
         <button type="submit">apply</button>
         {/* ux §1: owner is a first-class map param */}
         <span class="owner-toggle">
@@ -61,7 +65,13 @@ export function MapPage(props: {
       </form>
       <AttentionStrip rows={rows} />
       <div id="map-region">
-        {SECTIONS.map((s) => (
+        {props.category && (
+          <p class="hint">
+            showing {SECTIONS.find((s) => s.category === props.category)?.title ?? props.category} —{" "}
+            <a href="/">all categories</a>
+          </p>
+        )}
+        {sections.map((s) => (
           <Section
             title={s.title}
             // individual skills would flood the one-screen map: repos and
@@ -77,18 +87,20 @@ export function MapPage(props: {
             }
             rollup={s.category === "plugin_skill" ? skillsRollup(rows) : undefined}
             note={uptimeHint(s.category, rows)}
+            stale={stale}
           />
         ))}
-        {vendors.length > 0 && <Section title="Vendor APIs & Keys" rows={vendors} now={now} />}
-        {untagged.length > 0 && (
+        {!props.category && vendors.length > 0 && <Section title="Vendor APIs & Keys" rows={vendors} now={now} stale={stale} />}
+        {!props.category && untagged.length > 0 && (
           <Section
             title="Uncategorized"
             rows={untagged}
             now={now}
+            stale={stale}
             warning={`tag these repos with a topic: ${ALL_TOPICS}`}
           />
         )}
-        {other.length > 0 && <Section title="Other" rows={other} now={now} />}
+        {!props.category && other.length > 0 && <Section title="Other" rows={other} now={now} stale={stale} />}
         {props.archived.length > 0 && (
           <details class="section archived-section">
             <summary>
@@ -168,8 +180,10 @@ function Section(props: {
   warning?: string;
   rollup?: string;
   note?: string;
+  stale?: ReadonlySet<string>;
 }) {
   const { title, rows, now } = props;
+  const stale = props.stale ?? new Set<string>();
   const problems = rows.filter((r) => r.view.maxSeverity >= 2).length;
   return (
     <section class={props.warning ? "section warn" : "section"}>
@@ -186,7 +200,7 @@ function Section(props: {
         <>
           <table class="rows">
             {rows.map((r) => (
-              <Row row={r} now={now} />
+              <Row row={r} now={now} stale={stale} />
             ))}
           </table>
           {props.note && <p class="hint">{props.note}</p>}
@@ -196,7 +210,7 @@ function Section(props: {
   );
 }
 
-function Row(props: { row: TriageRow; now: number }) {
+function Row(props: { row: TriageRow; now: number; stale: ReadonlySet<string> }) {
   const { view: e, score } = props.row;
   return (
     <tr class="row" data-href={`/e/${e.id}`}>
@@ -211,7 +225,7 @@ function Row(props: { row: TriageRow; now: number }) {
         {e.owner && <span class="owner"> · {e.owner}</span>}
       </td>
       <td class="c-chips">
-        <Chips row={props.row} now={props.now} />
+        <Chips row={props.row} now={props.now} stale={props.stale} />
       </td>
       {/* the map has no header row, so the tooltip must say what the naked number IS */}
       <td class="num" title={`triage score${score.parts.length ? ` — ${score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ")}` : ""}`}>
@@ -229,29 +243,31 @@ function Row(props: { row: TriageRow; now: number }) {
 }
 
 // Per-category chip sets, hardcoded v1 (ux §6 decision: move to config only if they churn).
-function Chips(props: { row: TriageRow; now: number }) {
+function Chips(props: { row: TriageRow; now: number; stale: ReadonlySet<string> }) {
   const { view: e, usage30d } = props.row;
-  const { now } = props;
+  const { now, stale } = props;
   const l = e.latest;
+  // every chip in this set carries the failing-source dimming (spec §3)
+  const C = (p: Parameters<typeof Chip>[0]) => <Chip {...p} staleSources={stale} />;
   const pushed = (
-    <Chip label="pushed" signal={l["repo.pushed_at"]} now={now} render={(s) => timeAgo(s.value_num ?? 0, now)} />
+    <C label="pushed" signal={l["repo.pushed_at"]} now={now} render={(s) => timeAgo(s.value_num ?? 0, now)} />
   );
   // site.up appears only for repos with a deployed homepage — not expected of
   // every repo, so absence renders nothing rather than a warning dash
   const site = l["site.up"] && (
-    <Chip label="site" signal={l["site.up"]} now={now} render={(s) => (s.value_num === 1 ? "up" : "DOWN")} />
+    <C label="site" signal={l["site.up"]} now={now} render={(s) => (s.value_num === 1 ? "up" : "DOWN")} />
   );
-  const branches = l["repo.branches"] && <Chip label="branches" signal={l["repo.branches"]} now={now} />; // "br" decoded to nothing, even in its tooltip
+  const branches = l["repo.branches"] && <C label="branches" signal={l["repo.branches"]} now={now} />; // "br" decoded to nothing, even in its tooltip
   // docs health earns a chip only while incomplete — complete docs are silence
   const docs = l["docs.score"] && (l["docs.score"]?.value_num ?? 100) < 100 && (
-    <Chip label="docs" signal={l["docs.score"]} now={now} render={(s) => String(s.value_num ?? "?")} />
+    <C label="docs" signal={l["docs.score"]} now={now} render={(s) => String(s.value_num ?? "?")} />
   );
   switch (e.category) {
     case "static_site":
       return (
         <>
           {site}
-          <Chip label="LHCI" signal={l["lhci.performance"]} now={now} />
+          <C label="LHCI" signal={l["lhci.performance"]} now={now} />
           {branches}
           {docs}
           {pushed}
@@ -261,9 +277,9 @@ function Chips(props: { row: TriageRow; now: number }) {
       return (
         <>
           {site}
-          <Chip label="CI" signal={l["ci.status"]} now={now} render={(s) => (s.value_text === "success" ? "✓" : (s.value_text ?? "?"))} />
-          <Chip label="vulns" signal={l["deps.vuln_count"]} now={now} render={(s) => String(s.value_num ?? 0)} />
-          <Chip label="PRs" signal={l["prs.open"]} now={now} />
+          <C label="CI" signal={l["ci.status"]} now={now} render={(s) => (s.value_text === "success" ? "✓" : (s.value_text ?? "?"))} />
+          <C label="vulns" signal={l["deps.vuln_count"]} now={now} render={(s) => String(s.value_num ?? 0)} />
+          <C label="PRs" signal={l["prs.open"]} now={now} />
           {branches}
           {docs}
           {pushed}
@@ -272,7 +288,7 @@ function Chips(props: { row: TriageRow; now: number }) {
     case "tooling":
       return (
         <>
-          <Chip label="issues" signal={l["issues.open"]} now={now} />
+          <C label="issues" signal={l["issues.open"]} now={now} />
           {branches}
           {docs}
           {pushed}
@@ -282,8 +298,8 @@ function Chips(props: { row: TriageRow; now: number }) {
       if (e.kind === "plugin") {
         return (
           <>
-            <Chip label="skills" signal={l["manifest.skill_count"]} now={now} />
-            <Chip label="manifest" signal={l["manifest.description"]} now={now} />
+            <C label="skills" signal={l["manifest.skill_count"]} now={now} />
+            <C label="manifest" signal={l["manifest.description"]} now={now} />
           </>
         );
       }
@@ -304,17 +320,17 @@ function Chips(props: { row: TriageRow; now: number }) {
       );
     case "vendor_api": {
       if (e.kind === "worker") {
-        return <Chip label="errors" signal={l["cf.error_rate"]} now={now} render={(s) => formatSignalValue(s, now)} />;
+        return <C label="errors" signal={l["cf.error_rate"]} now={now} render={(s) => formatSignalValue(s, now)} />;
       }
       if (e.kind === "database") {
-        return <Chip label="size" signal={l["d1.size_bytes"]} now={now} render={(s) => formatSignalValue(s, now)} />;
+        return <C label="size" signal={l["d1.size_bytes"]} now={now} render={(s) => formatSignalValue(s, now)} />;
       }
       const anomaly = l["spend.anomaly"];
       const budget = l["budget.status"];
       return (
         <>
-          {anomaly && anomaly.severity >= 2 && <Chip label="anomaly" signal={anomaly} now={now} render={(s) => formatSignalValue(s, now)} />}
-          {budget && budget.severity >= 2 && <Chip label="budget" signal={budget} now={now} render={(s) => formatSignalValue(s, now)} />}
+          {anomaly && anomaly.severity >= 2 && <C label="anomaly" signal={anomaly} now={now} render={(s) => formatSignalValue(s, now)} />}
+          {budget && budget.severity >= 2 && <C label="budget" signal={budget} now={now} render={(s) => formatSignalValue(s, now)} />}
           <a href="/spend" class="chip">
             spend →
           </a>
@@ -324,8 +340,8 @@ function Chips(props: { row: TriageRow; now: number }) {
     default:
       return (
         <>
-          <Chip label="issues" signal={l["issues.open"]} now={now} />
-          <Chip label="PRs" signal={l["prs.open"]} now={now} />
+          <C label="issues" signal={l["issues.open"]} now={now} />
+          <C label="PRs" signal={l["prs.open"]} now={now} />
           {branches}
           {docs}
           {pushed}

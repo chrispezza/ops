@@ -30,7 +30,13 @@ function sortHref(f: TriageFilters, sort: string): string {
 }
 
 // The daily driver: the map flattened and sorted by pain (ux §2.2).
-export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; owners: string[]; now: number }) {
+export function TriagePage(props: {
+  rows: TriageRow[];
+  filters: TriageFilters;
+  owners: string[];
+  stale?: ReadonlySet<string>;
+  now: number;
+}) {
   return (
     <>
       <form class="filters" hx-get="/triage" hx-target="#triage-table" hx-select="#triage-table" hx-swap="outerHTML" hx-push-url="true">
@@ -63,12 +69,17 @@ export function TriagePage(props: { rows: TriageRow[]; filters: TriageFilters; o
         </select>
         <button type="submit">apply</button>
       </form>
-      <TriageTable rows={props.rows} filters={props.filters} now={props.now} />
+      <TriageTable rows={props.rows} filters={props.filters} stale={props.stale} now={props.now} />
     </>
   );
 }
 
-export function TriageTable(props: { rows: TriageRow[]; filters: TriageFilters; now: number }) {
+export function TriageTable(props: {
+  rows: TriageRow[];
+  filters: TriageFilters;
+  stale?: ReadonlySet<string>;
+  now: number;
+}) {
   const sort = props.filters.sort ?? "score";
   if (props.rows.length === 0) {
     return (
@@ -80,48 +91,48 @@ export function TriageTable(props: { rows: TriageRow[]; filters: TriageFilters; 
   return (
     <table class="rows" id="triage-table">
       <tr>
-        <th />
-        <th>
+        <th scope="col" />
+        <th scope="col">
           <a class={`sort ${sort === "name" ? "active" : ""}`} href={sortHref(props.filters, "name")}>
             entity
           </a>
         </th>
-        <th>kind</th>
-        <th>top signal</th>
-        <th>why</th>
+        <th scope="col">kind</th>
+        <th scope="col">top signal</th>
+        <th scope="col">why</th>
         {/* no hardcoded numbers: the weights live in /settings, so a tooltip
             quoting the defaults becomes a lie the moment they're edited —
             per-row breakdowns (expand the "why") carry the real arithmetic */}
-        <th class="num" title="triage score: severity + breadth + staleness + zero-usage — weights in /settings, breakdown under each row's why">
+        <th scope="col" class="num" title="triage score: severity + breadth + staleness + zero-usage — weights in /settings, breakdown under each row's why">
           <a class={`sort ${sort === "score" ? "active" : ""}`} href={sortHref(props.filters, "score")}>
             score
           </a>
         </th>
-        <th class="num">
+        <th scope="col" class="num">
           <a class={`sort ${sort === "issues" ? "active" : ""}`} href={sortHref(props.filters, "issues")}>
             issues
           </a>
         </th>
-        <th class="num">
+        <th scope="col" class="num">
           <a class={`sort ${sort === "vulns" ? "active" : ""}`} href={sortHref(props.filters, "vulns")}>
             vulns
           </a>
         </th>
-        <th class="num">
+        <th scope="col" class="num">
           <a class={`sort ${sort === "stale" ? "active" : ""}`} href={sortHref(props.filters, "stale")}>
             stale
           </a>
         </th>
-        <th />
+        <th scope="col" />
       </tr>
       {props.rows.map((r) => (
-        <Row row={r} now={props.now} />
+        <Row row={r} now={props.now} stale={props.stale} />
       ))}
     </table>
   );
 }
 
-function Row(props: { row: TriageRow; now: number }) {
+function Row(props: { row: TriageRow; now: number; stale?: ReadonlySet<string> }) {
   const { view: e, score } = props.row;
   const worst = Object.values(e.latest)
     .filter((s) => s.severity > 0)
@@ -139,7 +150,9 @@ function Row(props: { row: TriageRow; now: number }) {
         {e.category ?? e.kind}
         {e.owner && <span class="owner"> · {e.owner}</span>}
       </td>
-      <td class="c-chips">{worst ? <Chip label={labelForMetric(worst.metric)} signal={worst} now={props.now} /> : <span class="hint">—</span>}</td>
+      <td class="c-chips">
+        {worst ? <Chip label={labelForMetric(worst.metric)} signal={worst} now={props.now} staleSources={props.stale} /> : <span class="hint">—</span>}
+      </td>
       <td class="c-why">
         {/* score breakdown behind a native disclosure — no endpoint needed */}
         <details>

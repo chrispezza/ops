@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getCookie } from "hono/cookie";
 import { verifyAccessJwt } from "./core/access";
 import { EXPECTED_METRICS, TRIAGE_WEIGHTS, type TriageWeights } from "./config";
@@ -23,6 +23,7 @@ import {
   intervalSums,
   latestSignals,
   pollerHealth,
+  type PollerHealth,
   putSetting,
   setArchived,
   signalHistory,
@@ -38,7 +39,7 @@ import { FindingsPage } from "./ui/pages/findings";
 import { EntityPage, HISTORY_PAGE, HistoryRows } from "./ui/pages/entity";
 import { HealthPage } from "./ui/pages/health";
 import { MapPage } from "./ui/pages/map";
-import { SettingsPage } from "./ui/pages/settings";
+import { SettingsPage, type SettingsDraft } from "./ui/pages/settings";
 import { type SpendEntity, SpendPage } from "./ui/pages/spend";
 import { TriagePage, type TriageRow } from "./ui/pages/triage";
 
@@ -169,10 +170,18 @@ function distinctOwners(rows: TriageRow[]): string[] {
   return [...new Set(rows.map((r) => r.view.owner).filter((o): o is string => !!o))].sort();
 }
 
+// Sources currently hard-failing — views dim their numbers instead of showing
+// them at full confidence (spec §3: "dimmed, never hidden"). Poller id = signal
+// source by construction (runner passes poller.id to insertSignals).
+function staleSources(health: PollerHealth[]): ReadonlySet<string> {
+  return new Set(health.filter((h) => (h.lastRun?.severity ?? 0) >= 3).map((h) => h.name));
+}
+
 app.get("/", async (c) => {
   const now = epochNow();
   const q = c.req.query("q")?.toLowerCase();
   const owner = c.req.query("owner") || undefined;
+  const category = c.req.query("category") || undefined; // ux §1 promised this param
   const [rows, health, archived] = await Promise.all([
     scoredViews(c.env.DB, now),
     pollerHealth(c.env.DB),
@@ -184,7 +193,16 @@ app.get("/", async (c) => {
     .filter((r) => !owner || r.view.owner === owner);
   return c.html(
     <Layout path="/" title="Map" health={health} now={now}>
-      <MapPage rows={filtered} archived={archived} q={q} owner={owner} owners={owners} now={now} />
+      <MapPage
+        rows={filtered}
+        archived={archived}
+        q={q}
+        owner={owner}
+        category={category}
+        owners={owners}
+        stale={staleSources(health)}
+        now={now}
+      />
     </Layout>,
   );
 });
@@ -213,7 +231,7 @@ app.get("/triage", async (c) => {
   );
   return c.html(
     <Layout path="/triage" title="Triage" health={health} now={now}>
-      <TriagePage rows={filtered} filters={filters} owners={owners} now={now} />
+      <TriagePage rows={filtered} filters={filters} owners={owners} stale={staleSources(health)} now={now} />
     </Layout>,
   );
 });
@@ -248,7 +266,16 @@ app.get("/e/*", async (c) => {
   ]);
   return c.html(
     <Layout path="/e" title={entity.name} hasH1 health={health} now={now}>
-      <EntityPage entity={entity} latest={latest} history={history} intervalSeries={intervalSeries} trends={trends} windowDays={windowDays} now={now} />
+      <EntityPage
+        entity={entity}
+        latest={latest}
+        history={history}
+        intervalSeries={intervalSeries}
+        trends={trends}
+        windowDays={windowDays}
+        stale={staleSources(health)}
+        now={now}
+      />
     </Layout>,
   );
 });
@@ -274,7 +301,7 @@ app.get("/findings", async (c) => {
   const [rows, health] = await Promise.all([findings(c.env.DB, filters), pollerHealth(c.env.DB)]);
   return c.html(
     <Layout path="/findings" title="Findings" health={health} now={now}>
-      <FindingsPage rows={rows} filters={filters} now={now} />
+      <FindingsPage rows={rows} filters={filters} stale={staleSources(health)} now={now} />
     </Layout>,
   );
 });
@@ -323,11 +350,24 @@ app.get("/spend", async (c) => {
     })),
   );
   entities.sort((a, b) => b.mtd - a.mtd);
+  // ux §1 promised ?entity= — narrow the by-entity rows; totals stay portfolio-wide
+  // so the header number never silently changes meaning
+  const entityFilter = c.req.query("entity") || undefined;
+  const shown = entityFilter ? entities.filter((e) => e.id === entityFilter) : entities;
   const orgMtd = entities.reduce((s, e) => s + e.mtd, 0);
 
   return c.html(
     <Layout path="/spend" title="Spend" health={health} now={now}>
-      <SpendPage entities={entities} budgets={budgets} orgMtd={orgMtd} windowDays={windowDays} window={window} now={now} />
+      <SpendPage
+        entities={shown}
+        allEntities={entities}
+        entityFilter={entityFilter}
+        budgets={budgets}
+        orgMtd={orgMtd}
+        windowDays={windowDays}
+        window={window}
+        now={now}
+      />
     </Layout>,
   );
 });
@@ -339,7 +379,12 @@ const SETTINGS_ERRORS: Record<string, string> = {
   balance: 'Balance not saved: entity id must be "{kind}:{key}" (e.g. vendor_api:xai), with a name, a non-negative amount, and a valid date.',
 };
 
-app.get("/settings", async (c) => {
+// Shared by GET /settings and the failed-validation re-renders: rejecting a
+// form used to redirect to ?err=…, which discarded everything the user typed.
+async function renderSettings(
+  c: Context<{ Bindings: Env }>,
+  opts: { error?: string; draft?: SettingsDraft; status?: 200 | 400 } = {},
+): Promise<Response> {
   const now = epochNow();
   const [budgets, weights, balances, health] = await Promise.all([
     c.env.DB.prepare("SELECT * FROM budgets").all<BudgetRow>().then((r) => r.results),
@@ -347,15 +392,27 @@ app.get("/settings", async (c) => {
     getSetting<BalanceEntry[]>(c.env.DB, "balances"),
     pollerHealth(c.env.DB),
   ]);
-  // hasOwn, not a bare index: `?err=constructor` otherwise resolves up the
-  // prototype chain and hands a function to the renderer.
-  const errKey = c.req.query("err") ?? "";
-  const error = Object.hasOwn(SETTINGS_ERRORS, errKey) ? SETTINGS_ERRORS[errKey] : undefined;
   return c.html(
     <Layout path="/settings" title="Settings" health={health} now={now}>
-      <SettingsPage budgets={budgets} weights={weights ?? TRIAGE_WEIGHTS} balances={balances ?? []} error={error} />
+      <SettingsPage
+        budgets={budgets}
+        weights={weights ?? TRIAGE_WEIGHTS}
+        balances={balances ?? []}
+        error={opts.error}
+        draft={opts.draft}
+      />
     </Layout>,
+    opts.status ?? 200,
   );
+}
+
+app.get("/settings", async (c) => {
+  // hasOwn, not a bare index: `?err=constructor` otherwise resolves up the
+  // prototype chain and hands a function to the renderer. Kept for old links;
+  // failed POSTs now re-render directly with the draft preserved.
+  const errKey = c.req.query("err") ?? "";
+  const error = Object.hasOwn(SETTINGS_ERRORS, errKey) ? SETTINGS_ERRORS[errKey] : undefined;
+  return renderSettings(c, { error });
 });
 
 app.post("/settings/balances", async (c) => {
@@ -365,7 +422,11 @@ app.post("/settings/balances", async (c) => {
   const startingUsd = Number(form.get("starting_usd"));
   const asOf = Math.floor(Date.parse(String(form.get("as_of") ?? "")) / 1000);
   if (!entityId.includes(":") || !name || !Number.isFinite(startingUsd) || startingUsd < 0 || !Number.isFinite(asOf)) {
-    return c.redirect("/settings?err=balance");
+    return renderSettings(c, {
+      error: SETTINGS_ERRORS.balance,
+      draft: { balance: { entityId, name, startingUsd: String(form.get("starting_usd") ?? ""), asOf: String(form.get("as_of") ?? "") } },
+      status: 400,
+    });
   }
   const balances = (await getSetting<BalanceEntry[]>(c.env.DB, "balances")) ?? [];
   const next = balances.filter((b) => b.entityId !== entityId);
@@ -390,7 +451,11 @@ app.post("/settings/budgets", async (c) => {
   const soft = Number(form.get("soft_limit"));
   const hard = Number(form.get("hard_limit"));
   if (!scope || !Number.isFinite(soft) || !Number.isFinite(hard) || soft < 0 || hard < soft) {
-    return c.redirect("/settings?err=budget");
+    return renderSettings(c, {
+      error: SETTINGS_ERRORS.budget,
+      draft: { budget: { scope, period, soft: String(form.get("soft_limit") ?? ""), hard: String(form.get("hard_limit") ?? "") } },
+      status: 400,
+    });
   }
   await c.env.DB.prepare(
     "INSERT INTO budgets (scope, metric, period, soft_limit, hard_limit) VALUES (?1, 'spend.usd', ?2, ?3, ?4)",

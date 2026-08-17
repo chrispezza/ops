@@ -28,7 +28,12 @@ const BANDS = [
   { title: "Routine", match: (r: FindingRow) => r.severity <= 1 },
 ] as const;
 
-export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilters; now: number }) {
+export function FindingsPage(props: {
+  rows: FindingRow[];
+  filters: FindingsFilters;
+  stale?: ReadonlySet<string>;
+  now: number;
+}) {
   const f = props.filters;
   const live = props.rows.filter((r) => !r.entity_archived);
   const archived = props.rows.filter((r) => r.entity_archived);
@@ -73,7 +78,7 @@ export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilte
                 <h2>
                   {band.title} <span class="rollup num">{rows.length}</span>
                 </h2>
-                <FindingsTable rows={clusterByEntity(rows)} filters={f} now={props.now} />
+                <FindingsTable rows={clusterByEntity(rows)} filters={f} stale={props.stale} now={props.now} />
               </section>
             );
           })
@@ -105,7 +110,12 @@ function clusterByEntity(rows: FindingRow[]): FindingRow[] {
   return [...clusters.values()].flat();
 }
 
-function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; now: number }) {
+function FindingsTable(props: {
+  rows: FindingRow[];
+  filters?: FindingsFilters;
+  stale?: ReadonlySet<string>;
+  now: number;
+}) {
   const sort = props.filters?.sort ?? "severity";
   let previousEntity = "";
   return (
@@ -122,7 +132,7 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
         <col class="w-links" />
       </colgroup>
       <tr>
-        <th>
+        <th scope="col">
           {props.filters ? (
             <a class={`sort ${sort === "severity" ? "active" : ""}`} href={sortHref(props.filters, "severity")}>
               sev
@@ -131,10 +141,10 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
             ""
           )}
         </th>
-        <th>entity</th>
-        <th>metric</th>
-        <th>value</th>
-        <th>
+        <th scope="col">entity</th>
+        <th scope="col">metric</th>
+        <th scope="col">value</th>
+        <th scope="col">
           {props.filters ? (
             <a class={`sort ${sort === "recent" ? "active" : ""}`} href={sortHref(props.filters, "recent")}>
               observed
@@ -143,7 +153,7 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
             "observed"
           )}
         </th>
-        <th />
+        <th scope="col" />
       </tr>
       {props.rows.map((r) => {
         const firstOfCluster = r.entity_id !== previousEntity;
@@ -164,8 +174,13 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
           <td class="c-kind" title={r.metric}>
             {labelForMetric(r.metric)}
           </td>
-          {/* value_text carries the explanation when a number is shown — keep it reachable */}
-          <td class="num" title={r.value_num != null && r.value_text ? r.value_text : undefined}>
+          {/* value_text carries the explanation when a number is shown — keep it
+              reachable; stale = the source poller is failing (spec §3: dimmed,
+              never hidden) */}
+          <td
+            class={props.stale?.has(r.source) ? "num stale-data" : "num"}
+            title={`${r.value_num != null && r.value_text ? r.value_text : ""}${props.stale?.has(r.source) ? " · source failing — value may be stale" : ""}`.trim() || undefined}
+          >
             {formatSignalValue(r, props.now)}
           </td>
           <td class="c-kind">{timeAgo(r.observed_at, props.now)} ago</td>
