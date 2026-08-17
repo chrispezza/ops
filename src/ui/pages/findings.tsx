@@ -35,15 +35,18 @@ export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilte
   return (
     <>
       <form class="filters" hx-get="/findings" hx-target="#findings-region" hx-select="#findings-region" hx-swap="outerHTML" hx-push-url="true">
-        <input type="search" name="domain" placeholder="domain prefix (e.g. seo)… ( / )" value={f.domain ?? ""} />
-        <select name="min_severity">
+        {/* "e.g. ci", not "e.g. seo" — no seo.* metric exists in this deployment,
+            so the old example returned zero rows when typed */}
+        <input type="search" name="domain" placeholder="domain prefix (e.g. ci)… ( / )" value={f.domain ?? ""} aria-label="metric domain prefix" />
+        {f.sort && <input type="hidden" name="sort" value={f.sort} />}
+        <select name="min_severity" aria-label="minimum severity">
           {[0, 1, 2, 3, 4].map((s) => (
             <option value={String(s)} selected={f.minSeverity === s}>
               sev ≥ {s}
             </option>
           ))}
         </select>
-        <select name="category">
+        <select name="category" aria-label="category">
           <option value="">all categories</option>
           {["static_site", "web_app", "plugin_skill", "tooling", "client_project", "vendor_api"].map((c) => (
             <option value={c} selected={f.category === c}>
@@ -58,7 +61,7 @@ export function FindingsPage(props: { rows: FindingRow[]; filters: FindingsFilte
       </form>
       <div id="findings-region">
         {live.length === 0 ? (
-          <p class="hint">No findings match. Lower min severity or clear the domain filter.</p>
+          <p class="hint">No findings match. Lower min severity, or clear the domain or category filter.</p>
         ) : f.group === "entity" ? (
           <Grouped rows={live} now={props.now} />
         ) : (
@@ -106,7 +109,18 @@ function FindingsTable(props: { rows: FindingRow[]; filters?: FindingsFilters; n
   const sort = props.filters?.sort ?? "severity";
   let previousEntity = "";
   return (
-    <table class="rows">
+    // fixed shared geometry: each band/group renders its own table, and auto
+    // layout put the value column at a different x per band — same disease the
+    // entity page had, same cure
+    <table class="rows findings-cols">
+      <colgroup>
+        <col class="w-dot" />
+        <col />
+        <col class="w-metric" />
+        <col class="w-val" />
+        <col class="w-obs" />
+        <col class="w-links" />
+      </colgroup>
       <tr>
         <th>
           {props.filters ? (

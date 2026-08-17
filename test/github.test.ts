@@ -66,10 +66,18 @@ describe("github poller", () => {
 
     const result = await github.poll(testEnv, { listEntities: async () => [] });
 
-    // archived repo skipped; categories from topics
-    expect(result.entities.map((e) => e.id)).toEqual(["repo:clownware/gittunes", "repo:clownware/untagged"]);
+    // upstream-archived repo is MARKED archived, not skipped — the entity page
+    // promises "archive it on GitHub and Ops follows on the next poll"
+    expect(result.entities.map((e) => e.id)).toEqual([
+      "repo:clownware/gittunes",
+      "repo:clownware/untagged",
+      "repo:clownware/old",
+    ]);
     expect(result.entities[0]?.category).toBe("web_app");
     expect(result.entities[1]?.category).toBeUndefined();
+    expect(result.entities[2]?.archived).toBe(true);
+    // archived means frozen: no signals for it
+    expect(result.signals.some((s) => s.entityId === "repo:clownware/old")).toBe(false);
 
     const sig = (id: string, metric: string) =>
       result.signals.find((s) => s.entityId === id && s.metric === metric);

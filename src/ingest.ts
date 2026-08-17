@@ -165,8 +165,15 @@ export async function handleIngest(c: Context<{ Bindings: Env }>): Promise<Respo
     await upsertEntities(c.env.DB, payload.entities ?? [], now);
     await insertSignals(c.env.DB, "ci_ingest", payload.signals);
   } catch (err) {
-    // FK violation = signal for an entity Ops has never seen: caller must include it
-    return c.json({ error: `insert failed: ${err instanceof Error ? err.message : String(err)}` }, 400);
+    const message = err instanceof Error ? err.message : String(err);
+    // The comment used to know the fix while the caller got raw SQLite — say it
+    // in the response, not just here.
+    if (message.includes("FOREIGN KEY"))
+      return c.json(
+        { error: 'unknown entity: signals reference entities by id — include the entity in "entities" in the same request' },
+        400,
+      );
+    return c.json({ error: `insert failed: ${message}` }, 400);
   }
   return c.json({ ok: true, entities: payload.entities?.length ?? 0, signals: payload.signals.length }, 202);
 }

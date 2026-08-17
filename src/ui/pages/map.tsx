@@ -2,13 +2,19 @@ import type { ArchivedEntity, EntityView } from "../../core/queries";
 import { Chip, Dot, ExtLink, formatSignalValue, newIssueUrl, timeAgo } from "../components";
 import type { TriageRow } from "./triage";
 
-const SECTIONS: { category: string; title: string }[] = [
-  { category: "static_site", title: "Static Sites" },
-  { category: "web_app", title: "Web Apps" },
-  { category: "plugin_skill", title: "Plugins · MCPs · Skills" },
-  { category: "tooling", title: "Tools · Templates · Experiments" },
-  { category: "client_project", title: "Client Projects" },
+// topics mirrors TOPIC_CATEGORY in pollers/github.ts — the empty-state hint
+// must name the actual topic, "tag with the matching topic" taught nothing
+// (and for Tools/Client Projects the topic appeared nowhere in the UI at all)
+const SECTIONS: { category: string; title: string; topics: string }[] = [
+  { category: "static_site", title: "Static Sites", topics: "static-site" },
+  { category: "web_app", title: "Web Apps", topics: "web-app" },
+  { category: "plugin_skill", title: "Plugins · MCPs · Skills", topics: "mcp, skill, or claude-plugin" },
+  { category: "tooling", title: "Tools · Templates · Experiments", topics: "tool or template" },
+  { category: "client_project", title: "Client Projects", topics: "client" },
 ];
+
+// every topic github.ts accepts — the two hint sites listed 4 of 9
+const ALL_TOPICS = "static-site · web-app · mcp · skill · claude-plugin · tool · template · client";
 
 export function MapPage(props: {
   rows: TriageRow[];
@@ -33,7 +39,10 @@ export function MapPage(props: {
   return (
     <>
       <form class="filters" hx-get="/" hx-target="#map-region" hx-select="#map-region" hx-swap="outerHTML" hx-push-url="true">
-        <input type="search" name="q" placeholder="filter… ( / )" value={props.q ?? ""} />
+        <input type="search" name="q" placeholder="filter… ( / )" value={props.q ?? ""} aria-label="filter entities" />
+        {/* the owner toggle is anchors, not a field — without this hidden input,
+            submitting the filter silently dropped the active owner scope */}
+        {props.owner && <input type="hidden" name="owner" value={props.owner} />}
         <button type="submit">apply</button>
         {/* ux §1: owner is a first-class map param */}
         <span class="owner-toggle">
@@ -59,7 +68,13 @@ export function MapPage(props: {
             // plugins get rows, skills roll up into the section header
             rows={rows.filter((r) => r.view.category === s.category && r.view.kind !== "skill")}
             now={now}
-            hint={`No ${s.title.toLowerCase()} yet — tag repos with the matching topic.`}
+            // filtered-empty is "no matches", not "go tag repos on GitHub" —
+            // the old hint was factually wrong whenever a filter was active
+            hint={
+              props.q || props.owner
+                ? `No matches${props.q ? ` for “${props.q}”` : ""} here.`
+                : `No ${s.title} yet — tag repos with topic ${s.topics}.`
+            }
             rollup={s.category === "plugin_skill" ? skillsRollup(rows) : undefined}
             note={uptimeHint(s.category, rows)}
           />
@@ -70,7 +85,7 @@ export function MapPage(props: {
             title="Uncategorized"
             rows={untagged}
             now={now}
-            warning="tag these repos with a topic: static-site · web-app · mcp · skill"
+            warning={`tag these repos with a topic: ${ALL_TOPICS}`}
           />
         )}
         {other.length > 0 && <Section title="Other" rows={other} now={now} />}
@@ -198,7 +213,8 @@ function Row(props: { row: TriageRow; now: number }) {
       <td class="c-chips">
         <Chips row={props.row} now={props.now} />
       </td>
-      <td class="num" title={score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ") || undefined}>
+      {/* the map has no header row, so the tooltip must say what the naked number IS */}
+      <td class="num" title={`triage score${score.parts.length ? ` — ${score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ")}` : ""}`}>
         {score.total > 0 ? score.total : ""}
       </td>
       <td class="c-links">
@@ -225,7 +241,7 @@ function Chips(props: { row: TriageRow; now: number }) {
   const site = l["site.up"] && (
     <Chip label="site" signal={l["site.up"]} now={now} render={(s) => (s.value_num === 1 ? "up" : "DOWN")} />
   );
-  const branches = l["repo.branches"] && <Chip label="br" signal={l["repo.branches"]} now={now} />;
+  const branches = l["repo.branches"] && <Chip label="branches" signal={l["repo.branches"]} now={now} />; // "br" decoded to nothing, even in its tooltip
   // docs health earns a chip only while incomplete — complete docs are silence
   const docs = l["docs.score"] && (l["docs.score"]?.value_num ?? 100) < 100 && (
     <Chip label="docs" signal={l["docs.score"]} now={now} render={(s) => String(s.value_num ?? "?")} />
@@ -330,7 +346,7 @@ export function SetupChecklist() {
         <li>
           Set <code>GITHUB_OWNERS</code> in wrangler.jsonc vars
         </li>
-        <li>Tag repos with topics: static-site · web-app · mcp · skill</li>
+        <li>Tag repos with topics: {ALL_TOPICS}</li>
         <li>
           Wait for the hourly cron, or trigger a poll from <a href="/health">/health</a>
         </li>

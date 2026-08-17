@@ -11,12 +11,34 @@ const NAV = [
   ["/settings", "Settings"],
 ] as const;
 
+// Human names for poller ids — the banner reads "GitHub data is 9h old", not
+// "anthropic_usage data is…". Fallback de-snake_cases unknown ids.
+const POLLER_LABELS: Record<string, string> = {
+  github: "GitHub",
+  anthropic_usage: "Anthropic usage",
+  claude_code: "Claude Code",
+  openai_costs: "OpenAI costs",
+  x_usage: "X usage",
+  cloudflare: "Cloudflare",
+  uptime: "Uptime",
+  manifests: "Marketplace",
+};
+const pollerLabel = (id: string) => POLLER_LABELS[id] ?? id.replace(/_/g, " ");
+
 // ux principle 2: never lie about freshness. The chip shows worst-case
 // staleness across sources; failing sources get a visible banner.
 export function FreshnessChip(props: { health: PollerHealth[]; now: number }) {
   const oks = props.health.map((h) => h.lastOk?.observed_at).filter((t): t is number => t != null);
+  // A hard-failing poller that has NEVER succeeded contributes no lastOk, so
+  // "data ≤ 2h old" would quietly overclaim. Unconfigured (sev 1) stays out —
+  // that's a deliberate calm state, not missing data.
+  const neverSucceeded = props.health.some((h) => (h.lastRun?.severity ?? 0) >= 3 && !h.lastOk);
   const label =
-    oks.length === 0 ? "no data yet" : `data ≤ ${timeAgo(Math.min(...oks), props.now)} old`;
+    oks.length === 0
+      ? "no data yet"
+      : neverSucceeded
+        ? "some sources have no data"
+        : `data ≤ ${timeAgo(Math.min(...oks), props.now)} old`;
   return (
     <a
       class="freshness"
@@ -35,6 +57,7 @@ export function Layout(props: {
   path: string;
   health: PollerHealth[];
   now: number;
+  hasH1?: boolean; // the entity page renders its own visible h1
   children?: Child;
 }) {
   const failing = props.health.filter((h) => (h.lastRun?.severity ?? 0) >= 3);
@@ -59,21 +82,27 @@ export function Layout(props: {
             Ops
           </span>
           {NAV.map(([href, label]) => (
-            <a href={href} class={props.path === href ? "active" : ""}>
+            <a href={href} class={props.path === href ? "active" : ""} aria-current={props.path === href ? "page" : undefined}>
               {label}
             </a>
           ))}
           <FreshnessChip health={props.health} now={props.now} />
         </nav>
-        {failing.map((h) => (
-          <div class="banner amber">
-            {h.name} data is{" "}
-            {h.lastOk ? `${timeAgo(h.lastOk.observed_at, props.now)} old` : "unavailable"} (poller
-            failing since {h.lastRun ? `${timeAgo(h.lastRun.observed_at, props.now)} ago` : "?"}) →{" "}
-            <a href="/health">/health</a>
-          </div>
-        ))}
-        <main>{props.children}</main>
+        <main>
+          {/* inside <main> so landmark navigation reaches it; role=status so its
+              presence is announced. failingSince is the outage ONSET — the old
+              lastRun-based copy read "failing since 7m ago" through a 4-day outage. */}
+          {failing.map((h) => (
+            <div class="banner amber" role="status">
+              {pollerLabel(h.name)} data is{" "}
+              {h.lastOk ? `${timeAgo(h.lastOk.observed_at, props.now)} old` : "unavailable"} (poller
+              failing for {h.failingSince ? timeAgo(h.failingSince, props.now) : "?"}) →{" "}
+              <a href="/health">/health</a>
+            </div>
+          ))}
+          {props.title && !props.hasH1 && <h1 class="sr-only">{props.title}</h1>}
+          {props.children}
+        </main>
       </body>
     </html>
   );

@@ -43,14 +43,25 @@ export function SettingsPage(props: {
             ))}
           </table>
         )}
+        {/* visible labels, same pattern as the weights form below — placeholders
+            vanish on input and screen readers get nothing from a bare select */}
         <form method="post" action="/settings/budgets" class="filters">
-          <input name="scope" placeholder='scope ("*", kind, or entity id)' required />
-          <select name="period">
-            <option value="month">month</option>
-            <option value="day">day</option>
-          </select>
-          <input name="soft_limit" type="number" step="0.01" min="0" placeholder="soft $" required />
-          <input name="hard_limit" type="number" step="0.01" min="0" placeholder="hard $" required />
+          <label>
+            scope <input name="scope" placeholder='"*", kind, or entity id' required />
+          </label>
+          <label>
+            period{" "}
+            <select name="period">
+              <option value="month">month</option>
+              <option value="day">day</option>
+            </select>
+          </label>
+          <label>
+            soft $ <input name="soft_limit" type="number" step="0.01" min="0" required />
+          </label>
+          <label>
+            hard $ <input name="hard_limit" type="number" step="0.01" min="0" required />
+          </label>
           <button type="submit">add budget</button>
         </form>
         <p class="hint">Metric is spend.usd; crossing soft emits severity 2, hard emits severity 4.</p>
@@ -84,10 +95,20 @@ export function SettingsPage(props: {
           </table>
         )}
         <form method="post" action="/settings/balances" class="filters">
-          <input name="entity_id" placeholder="entity id (vendor_api:xai)" required />
-          <input name="name" placeholder="display name" required />
-          <input name="starting_usd" type="number" step="0.01" min="0" placeholder="starting $" required />
-          <input name="as_of" type="date" required />
+          <label>
+            entity id <input name="entity_id" placeholder="vendor_api:xai" required />
+          </label>
+          <label>
+            name <input name="name" placeholder="xAI" required />
+          </label>
+          <label>
+            starting $ <input name="starting_usd" type="number" step="0.01" min="0" required />
+          </label>
+          {/* date inputs never render placeholders — without the label this
+              was an anonymous mm/dd/yyyy box */}
+          <label>
+            as of <input name="as_of" type="date" required />
+          </label>
           <button type="submit">add balance</button>
         </form>
         <p class="hint">
@@ -116,6 +137,11 @@ export function SettingsPage(props: {
           </label>
           <button type="submit">save weights</button>
         </form>
+        <p class="hint">
+          Score = worst severity × the severity factor, + breadth × findings at ≥ medium, + staleness points past
+          30/90 days without a push. Zero-usage applies only once usage telemetry exists (it is inert until a poller
+          reports invocations).
+        </p>
       </section>
     </>
   );

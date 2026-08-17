@@ -138,6 +138,10 @@ export interface PollerHealth {
   name: string;
   lastRun: SignalRow | null;
   lastOk: SignalRow | null;
+  // Epoch of the FIRST failing run after the last success — the outage onset.
+  // The banner used to show the latest attempt, so a 4-day outage read
+  // "failing since 7m ago" after every hourly cron (principle 2 violation).
+  failingSince: number | null;
 }
 
 // One row per poller: latest status signal + latest successful one (ux §2.6).
@@ -147,18 +151,31 @@ export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
       SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY observed_at DESC, id DESC) AS rn
       FROM signals WHERE metric = 'poller.status' ${filter}
     ) WHERE rn = 1`;
-  const [entities, lastRuns, lastOks] = await Promise.all([
+  const [entities, lastRuns, lastOks, onsets] = await Promise.all([
     db.prepare("SELECT id, name FROM entities WHERE kind = 'poller' ORDER BY id").all<{ id: string; name: string }>(),
     db.prepare(latest("")).all<SignalRow>(),
     db.prepare(latest("AND severity = 0")).all<SignalRow>(),
+    db
+      .prepare(
+        `SELECT s.entity_id, MIN(s.observed_at) AS onset FROM signals s
+         WHERE s.metric = 'poller.status' AND s.severity > 0
+           AND s.observed_at > coalesce((
+             SELECT MAX(ok.observed_at) FROM signals ok
+             WHERE ok.metric = 'poller.status' AND ok.severity = 0 AND ok.entity_id = s.entity_id
+           ), 0)
+         GROUP BY s.entity_id`,
+      )
+      .all<{ entity_id: string; onset: number }>(),
   ]);
   const runById = new Map(lastRuns.results.map((s) => [s.entity_id, s]));
   const okById = new Map(lastOks.results.map((s) => [s.entity_id, s]));
+  const onsetById = new Map(onsets.results.map((r) => [r.entity_id, r.onset]));
   return entities.results.map((e) => ({
     entityId: e.id,
     name: e.name,
     lastRun: runById.get(e.id) ?? null,
     lastOk: okById.get(e.id) ?? null,
+    failingSince: onsetById.get(e.id) ?? null,
   }));
 }
 

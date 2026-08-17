@@ -228,3 +228,25 @@ describe("hygiene pass", () => {
     expect(flag?.severity).toBe(0); // resolved, not left stale forever
   });
 });
+
+describe("archived upsert semantics", () => {
+  it("pollers mark archived one-way and never clobber the manual toggle", async () => {
+    const NOW2 = Math.floor(Date.now() / 1000);
+    // poller reports the repo archived upstream
+    await upsertEntities(env.DB, [{ id: "repo:a/gone", kind: "repo", name: "gone", archived: true }], NOW2);
+    let row = await env.DB.prepare("SELECT archived FROM entities WHERE id = 'repo:a/gone'").first<{ archived: number }>();
+    expect(row?.archived).toBe(1);
+
+    // a later poll without the flag must NOT unarchive it
+    await upsertEntities(env.DB, [{ id: "repo:a/gone", kind: "repo", name: "gone" }], NOW2 + 60);
+    row = await env.DB.prepare("SELECT archived FROM entities WHERE id = 'repo:a/gone'").first<{ archived: number }>();
+    expect(row?.archived).toBe(1);
+
+    // manually archived in Ops, then polled as a live repo — the manual choice survives
+    await upsertEntities(env.DB, [{ id: "repo:a/kept", kind: "repo", name: "kept" }], NOW2);
+    await env.DB.prepare("UPDATE entities SET archived = 1 WHERE id = 'repo:a/kept'").run();
+    await upsertEntities(env.DB, [{ id: "repo:a/kept", kind: "repo", name: "kept" }], NOW2 + 60);
+    const kept = await env.DB.prepare("SELECT archived FROM entities WHERE id = 'repo:a/kept'").first<{ archived: number }>();
+    expect(kept?.archived).toBe(1);
+  });
+});

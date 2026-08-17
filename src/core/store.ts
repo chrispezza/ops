@@ -1,8 +1,8 @@
 import type { EntityUpsert, SignalInsert } from "../pollers/types";
 
 const ENTITY_UPSERT_SQL = `
-INSERT INTO entities (id, kind, category, name, owner, source_url, metadata, first_seen_at, last_seen_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+INSERT INTO entities (id, kind, category, name, owner, source_url, metadata, archived, first_seen_at, last_seen_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, coalesce(?9, 0), ?8, ?8)
 ON CONFLICT(id) DO UPDATE SET
   kind = excluded.kind,
   category = coalesce(excluded.category, entities.category),
@@ -10,6 +10,7 @@ ON CONFLICT(id) DO UPDATE SET
   owner = coalesce(excluded.owner, entities.owner),
   source_url = coalesce(excluded.source_url, entities.source_url),
   metadata = coalesce(excluded.metadata, entities.metadata),
+  archived = coalesce(?9, entities.archived),
   last_seen_at = excluded.last_seen_at`;
 
 const SIGNAL_INSERT_SQL = `
@@ -39,6 +40,8 @@ export async function upsertEntities(db: D1Database, entities: EntityUpsert[], n
         e.sourceUrl ?? null,
         e.metadata ? JSON.stringify(e.metadata) : null,
         now,
+        // null = leave archived as-is on update (protects the manual toggle)
+        e.archived ? 1 : null,
       ),
     ),
   );

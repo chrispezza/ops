@@ -35,7 +35,7 @@ import { activityAt, computeScore, hasUsageSemantics } from "./core/score";
 import { handleIngest } from "./ingest";
 import { FreshnessChip, Layout } from "./ui/layout";
 import { FindingsPage } from "./ui/pages/findings";
-import { EntityPage, HistoryRows } from "./ui/pages/entity";
+import { EntityPage, HISTORY_PAGE, HistoryRows } from "./ui/pages/entity";
 import { HealthPage } from "./ui/pages/health";
 import { MapPage } from "./ui/pages/map";
 import { SettingsPage } from "./ui/pages/settings";
@@ -183,7 +183,7 @@ app.get("/", async (c) => {
     .filter((r) => !q || r.view.name.toLowerCase().includes(q))
     .filter((r) => !owner || r.view.owner === owner);
   return c.html(
-    <Layout path="/" health={health} now={now}>
+    <Layout path="/" title="Map" health={health} now={now}>
       <MapPage rows={filtered} archived={archived} q={q} owner={owner} owners={owners} now={now} />
     </Layout>,
   );
@@ -227,7 +227,7 @@ app.get("/e/*", async (c) => {
   const entity = await getEntity(c.env.DB, id);
   if (!entity) return c.notFound();
 
-  const history = await signalHistory(c.env.DB, id, 50, offset);
+  const history = await signalHistory(c.env.DB, id, HISTORY_PAGE, offset);
   // load-more swaps just the history fragment
   if (offset > 0 && c.req.header("HX-Request")) {
     return c.html(<HistoryRows entityId={id} history={history} offset={offset} now={now} />);
@@ -247,8 +247,8 @@ app.get("/e/*", async (c) => {
     trendSeries(c.env.DB, id, now - windowDays * DAY),
   ]);
   return c.html(
-    <Layout path="/e" title={entity.name} health={health} now={now}>
-      <EntityPage entity={entity} latest={latest} history={history} intervalSeries={intervalSeries} trends={trends} now={now} />
+    <Layout path="/e" title={entity.name} hasH1 health={health} now={now}>
+      <EntityPage entity={entity} latest={latest} history={history} intervalSeries={intervalSeries} trends={trends} windowDays={windowDays} now={now} />
     </Layout>,
   );
 });
@@ -334,7 +334,9 @@ app.get("/spend", async (c) => {
 
 const SETTINGS_ERRORS: Record<string, string> = {
   budget: "Budget not saved: scope is required and hard limit must be ≥ soft limit ≥ 0.",
-  balance: "Balance not saved: entity id, name, non-negative amount, and a valid date are all required.",
+  // names the rule that actually fails — the old copy listed four satisfied
+  // requirements while rejecting on the id shape it never mentioned
+  balance: 'Balance not saved: entity id must be "{kind}:{key}" (e.g. vendor_api:xai), with a name, a non-negative amount, and a valid date.',
 };
 
 app.get("/settings", async (c) => {
@@ -448,6 +450,25 @@ app.get("/partials/freshness", async (c) => {
   const now = epochNow();
   const health = await pollerHealth(c.env.DB);
   return c.html(<FreshnessChip health={health} now={now} />);
+});
+
+// Hono's default 404 is bare text with no nav — a dead end for any stale
+// bookmark or renamed entity. Same layout, a way back.
+app.notFound(async (c) => {
+  const now = epochNow();
+  const health = await pollerHealth(c.env.DB);
+  return c.html(
+    <Layout path="" title="Not found" health={health} now={now}>
+      <section class="section">
+        <h2>Not found</h2>
+        <p class="hint">
+          Nothing lives at this URL — the entity may have been renamed or removed. Start from the{" "}
+          <a href="/">map</a> or check <a href="/health">/health</a>.
+        </p>
+      </section>
+    </Layout>,
+    404,
+  );
 });
 
 export default {

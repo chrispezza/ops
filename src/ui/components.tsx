@@ -1,6 +1,6 @@
 import type { SignalRow } from "../core/queries";
 
-const SEV_NAMES = ["ok", "low", "medium", "high", "critical"] as const;
+import { SEVERITY_NAMES as SEV_NAMES } from "../config";
 
 export function Dot(props: { severity: number }) {
   const name = SEV_NAMES[props.severity] ?? "unknown";
@@ -85,8 +85,21 @@ export function safeHref(url: string | null | undefined): string | undefined {
 // stored URL fails safeHref, so a poisoned row loses its link, not the page.
 export function ExtLink(props: { url: string | null | undefined; children?: unknown }) {
   const href = safeHref(props.url);
-  // title = destination: a bare "↗" gives no clue where it goes until hover
-  return href ? <a href={href} title={href}>{props.children ?? "↗"}</a> : null;
+  if (!href) return null;
+  // Text content wins accname computation, so a bare "↗" announces as "north
+  // east arrow" — aria-label gives it a real name; title covers mouse hover.
+  const host = (() => {
+    try {
+      return new URL(href).hostname;
+    } catch {
+      return href;
+    }
+  })();
+  return (
+    <a href={href} title={href} aria-label={props.children ? undefined : `open on ${host}`}>
+      {props.children ?? "↗"}
+    </a>
+  );
 }
 
 export function newIssueUrl(sourceUrl: string): string | undefined {
