@@ -198,7 +198,19 @@ function Section(props: {
         <p class="hint">{props.hint}</p>
       ) : (
         <>
-          <table class="rows">
+          {/* shared fixed geometry across every section — auto layout sized
+              name/kind/score per section from content, so columns wandered
+              between Static Sites and Web Apps (same disease entity and
+              findings had; chips stay the one flexible column) */}
+          <table class="rows map-cols">
+            <colgroup>
+              <col class="w-dot" />
+              <col class="w-name" />
+              <col class="w-kind" />
+              <col />
+              <col class="w-score" />
+              <col class="w-links" />
+            </colgroup>
             {rows.map((r) => (
               <Row row={r} now={now} stale={stale} />
             ))}

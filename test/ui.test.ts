@@ -379,3 +379,10 @@ describe("settings draft preservation", () => {
     expect(html).toContain('value="50"');
   });
 });
+
+describe("standards mode", () => {
+  it("every page ships a doctype — quirks mode broke table font inheritance", async () => {
+    const html = await (await SELF.fetch("https://ops.local/")).text();
+    expect(html.startsWith("<!DOCTYPE html>")).toBe(true);
+  });
+});
