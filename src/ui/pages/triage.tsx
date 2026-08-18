@@ -154,17 +154,22 @@ function Row(props: { row: TriageRow; now: number; stale?: ReadonlySet<string> }
         {worst ? <Chip label={labelForMetric(worst.metric)} signal={worst} now={props.now} staleSources={props.stale} /> : <span class="hint">—</span>}
       </td>
       <td class="c-why">
-        {/* score breakdown behind a native disclosure — no endpoint needed */}
-        <details>
-          <summary>{score.parts.slice(0, 2).map((p) => p.label).join(" · ") || "—"}</summary>
-          <ul class="breakdown">
-            {score.parts.map((p) => (
-              <li>
-                <span class="num">+{p.points}</span> {p.label}
-              </li>
-            ))}
-          </ul>
-        </details>
+        {/* score breakdown behind a native disclosure — no endpoint needed.
+            No parts = plain dash: an expander opening an empty list is a trap */}
+        {score.parts.length === 0 ? (
+          <span class="hint">—</span>
+        ) : (
+          <details>
+            <summary>{score.parts.slice(0, 2).map((p) => p.label).join(" · ")}</summary>
+            <ul class="breakdown">
+              {score.parts.map((p) => (
+                <li>
+                  <span class="num">+{p.points}</span> {p.label}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </td>
       <td class="num">{score.total}</td>
       <td class="num c-kind">

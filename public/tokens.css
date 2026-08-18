@@ -385,6 +385,20 @@ svg.spark .spark-bar.today { fill: none; stroke: hsl(var(--link)); stroke-width:
 svg.trend path { stroke: hsl(var(--fg-muted)); }
 td.c-trend { width: 104px; }
 
+/* Map sections: one fixed geometry across every category table — auto layout
+   put name/kind/score at a different x per section. Chips are the flexible
+   column; everything else is pinned. */
+table.map-cols { table-layout: fixed; }
+table.map-cols col.w-dot { width: 24px; }
+table.map-cols col.w-name { width: 170px; }
+table.map-cols col.w-kind { width: 170px; }
+table.map-cols col.w-score { width: 64px; }
+table.map-cols col.w-links { width: 118px; }
+table.map-cols td.c-name,
+table.map-cols td.c-kind { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* chips may wrap within their flexible column rather than forcing overflow */
+table.map-cols td.c-chips { white-space: normal; }
+
 /* Findings bands: every band/group renders its own table, so they share one
    fixed geometry — without it the metric/value/observed columns landed at a
    different x per severity band. */
@@ -577,6 +591,18 @@ section.section h2::after {
 }
 /* warning sections carry a status-colored cap — muted status hue, not accent */
 section.section.warn h2::before { background: hsl(var(--sev-2)); }
+
+/* domain group rows inside the entity table carry a smaller cap, so the page
+   speaks one chrome language (inline-block: safe inside a table cell) */
+table.metrics tr.domain th::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 8px;
+  background: hsl(var(--fg-muted));
+  border-radius: 999px 0 0 999px;
+  margin-right: var(--space-2);
+}
 
 /* Buttons wear the asymmetric LCARS end-cap: rounded on the leading edge,
    squared where the console continues. Press behavior unchanged (scale .97). */

@@ -12,7 +12,7 @@ interface StatusDetail {
 export function HealthPage(props: { health: PollerHealth[]; now: number }) {
   const { health, now } = props;
   return (
-    <>
+    <section class="section">
       <h2>Poller status</h2>
       {health.length === 0 ? (
         <p class="hint">No poller has run yet. Trigger one below or wait for the cron.</p>
@@ -57,7 +57,7 @@ export function HealthPage(props: { health: PollerHealth[]; now: number }) {
             would keep focus, but the form submits and navigates immediately */}
         <button type="submit" aria-live="polite">run all pollers now</button>
       </form>
-    </>
+    </section>
   );
 }
 

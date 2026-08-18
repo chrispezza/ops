@@ -1,3 +1,4 @@
+import { raw } from "hono/html";
 import type { Child } from "hono/jsx";
 import type { PollerHealth } from "../core/queries";
 import { timeAgo } from "./components";
@@ -62,7 +63,12 @@ export function Layout(props: {
 }) {
   const failing = props.health.filter((h) => (h.lastRun?.severity ?? 0) >= 3);
   return (
-    <html lang="en">
+    <>
+      {/* without the doctype every page rendered in QUIRKS MODE — the UA
+          stylesheet then resets table fonts to 16px, which is why table values
+          ignored the 13px base and column widths ran out of room */}
+      {raw("<!DOCTYPE html>")}
+      <html lang="en">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -104,6 +110,7 @@ export function Layout(props: {
           {props.children}
         </main>
       </body>
-    </html>
+      </html>
+    </>
   );
 }
