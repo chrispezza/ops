@@ -30,7 +30,8 @@
 }
 
 :root {
-  /* —— Ink scale —— */
+  /* —— Ink scale — the DS's full ramp, kept whole; --ink-200/--ink-700 are
+     currently unreferenced by design, not by accident —— */
   --ink-1000: 240 5% 4%;
   --ink-900: 240 6% 7%;
   --ink-800: 240 6% 10%;
@@ -49,11 +50,11 @@
   --accent: 170.3 100% 44.9%;
   --accent-dim: 170.1 87.8% 25%;
 
-  /* —— Status (muted; the brand is not colorful) —— */
-  --ok: 151 65% 54%;
+  /* —— Status (muted; the brand is not colorful). No success green: sev-0
+     is ink on purpose — "ok" is the quiet default, colour is reserved for
+     what needs attention, so the DS's --ok pair stays out of this skin. —— */
   --warn: 41.4 79.1% 56.9%;
   --err: 358.8 85.6% 64.7%;
-  --ok-dim: 151 65% 28%;
   --warn-dim: 41.4 79.1% 29%;
   --err-dim: 358.8 85.6% 42%;
 
@@ -64,6 +65,7 @@
   --text-sm: 0.75rem;
   --text-base: 0.8125rem;
   --text-lg: 1rem;
+  --tracking-wide: 0.08em;
   --tracking-wider: 0.18em;
   --tracking-mono: 0.02em;
 
@@ -93,7 +95,9 @@
   --sev-2: var(--warn-dim);
   --sev-3: var(--err-dim);
   --sev-4: 358.8 85.6% 34%;
-  --warn-surface: 41.4 79.1% 56.9%;
+  /* the banner's wash is the warn hue at low alpha in BOTH registers (it never
+     re-aliases to --warn-dim like --sev-2 does), hence its own name */
+  --warn-surface: var(--warn);
 }
 
 /* —— Dark / stage register — the native register of the brand —— */
@@ -367,7 +371,7 @@ ul.breakdown { margin: var(--space-1) 0 0; padding-left: var(--space-4); font-si
 .entity-head h1 {
   font-size: var(--text-lg);
   font-weight: 700;
-  letter-spacing: var(--tracking-wide, 0.08em);
+  letter-spacing: var(--tracking-wide);
   margin: 0 0 var(--space-1);
   color: hsl(var(--fg));
 }

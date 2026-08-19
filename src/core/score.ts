@@ -30,10 +30,7 @@ export function computeScore(
     undefined,
   );
   if (worst && worst.severity > 0) {
-    parts.push({
-      label: `${SEV_WORDS[worst.severity] ?? "?"} ${labelForMetric(worst.metric)}`,
-      points: w.severityFactor * worst.severity,
-    });
+    parts.push({ label: worstLabel(worst), points: w.severityFactor * worst.severity });
   }
 
   const breadth = latest.filter((s) => s.severity >= 2).length;
@@ -51,6 +48,20 @@ export function computeScore(
 
   parts.sort((a, b) => b.points - a.points);
   return { total: parts.reduce((sum, p) => sum + p.points, 0), parts };
+}
+
+// "<severity> <metric label>" explains the points (10 × severity) for signal
+// metrics — "high CI status". For the hygiene lifecycle metrics the label is a
+// state noun that takes the severity word literally: "low activity" for
+// hygiene.inactive meant severity-low but read as "activity is low", the exact
+// opposite. Those describe the state instead; the breakdown's +N carries the
+// arithmetic.
+function worstLabel(s: SignalRow): string {
+  if (s.metric === "hygiene.inactive") return `inactive ${s.value_num ?? "?"}d`;
+  if (s.metric === "hygiene.uncategorized") return "untagged";
+  if (s.metric.startsWith("hygiene.missing.")) return `missing ${labelForMetric(s.metric.slice("hygiene.missing.".length))}`;
+  if (s.metric === "hygiene.missing_metric") return "missing expected metric";
+  return `${SEV_WORDS[s.severity] ?? "?"} ${labelForMetric(s.metric)}`;
 }
 
 // Kinds with usage semantics get the zero-usage bonus; everything else passes

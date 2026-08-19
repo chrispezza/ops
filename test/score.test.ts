@@ -55,6 +55,16 @@ describe("triage score (spec §4.1)", () => {
     expect(score.parts[1]?.label).toBe("stale 94d");
   });
 
+  it("describes hygiene lifecycle signals by state, not severity adjective", () => {
+    // "low activity" read as "activity is low" — the opposite of severity-low
+    const inactive = view({}, [{ metric: "hygiene.inactive", severity: 1, value_num: 41, value_text: "no pushes for 41d" }]);
+    expect(computeScore(inactive, NOW, null).parts[0]?.label).toBe("inactive 41d");
+    const untagged = view({}, [{ metric: "hygiene.uncategorized", severity: 1, value_text: "no topic" }]);
+    expect(computeScore(untagged, NOW, null).parts[0]?.label).toBe("untagged");
+    const missing = view({}, [{ metric: "hygiene.missing.lhci.performance", severity: 2 }]);
+    expect(computeScore(missing, NOW, null).parts[0]?.label).toBe("missing Lighthouse perf");
+  });
+
   it("gives healthy fresh entities a zero score", () => {
     const v = view({}, [{ metric: "ci.status", severity: 0, value_text: "success" }]);
     expect(computeScore(v, NOW, null).total).toBe(0);
