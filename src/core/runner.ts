@@ -31,6 +31,7 @@ export interface RunSummary {
   pollerId: string;
   ok: boolean;
   error?: string;
+  notes?: string[]; // succeeded, with coverage caveats (PollerResult.notes)
   entities: number;
   signals: number;
   durationMs: number;
@@ -58,6 +59,7 @@ export async function runPollers(
       summary = {
         pollerId: poller.id,
         ok: true,
+        ...(result.notes?.length ? { notes: result.notes } : {}),
         entities: result.entities.length,
         signals: result.signals.length,
         durationMs: Date.now() - t0,
@@ -81,8 +83,16 @@ export async function runPollers(
 async function recordPollerStatus(db: D1Database, summary: RunSummary, now: number): Promise<void> {
   const entityId = `poller:${summary.pollerId}`;
   // "unconfigured" is a calm state, not a failure — visible on /health at
-  // severity 1 without tripping the degradation banner.
-  const severity = summary.ok ? 0 : summary.error?.startsWith("unconfigured") ? 1 : 3;
+  // severity 1 without tripping the degradation banner. A run that succeeded
+  // but truncated its coverage (notes) sits at the same calm level: the data
+  // that exists is fresh, but the gap must be visible somewhere.
+  const severity = summary.ok
+    ? summary.notes?.length
+      ? 1
+      : 0
+    : summary.error?.startsWith("unconfigured")
+      ? 1
+      : 3;
   await upsertEntities(db, [{ id: entityId, kind: "poller", name: summary.pollerId }], now);
   await insertSignals(db, "core", [
     {
