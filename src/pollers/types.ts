@@ -33,6 +33,11 @@ export interface SignalInsert {
 export interface PollerResult {
   entities: EntityUpsert[];
   signals: SignalInsert[];
+  // Non-fatal caveats about THIS run's coverage — "monitoring 25 of 31 sites".
+  // The runner records them on the poller.status signal at severity 1 (calm,
+  // off the banner, visible on /health). No silent caps: a poller that
+  // truncates its own work says so here instead of letting the gap be inferred.
+  notes?: string[];
 }
 
 export type Schedule = "hourly" | "daily";

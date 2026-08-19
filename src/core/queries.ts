@@ -151,17 +151,22 @@ export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
       SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY observed_at DESC, id DESC) AS rn
       FROM signals WHERE metric = 'poller.status' ${filter}
     ) WHERE rn = 1`;
+  // "Success" is the run summary's ok flag, not severity 0: a run that
+  // succeeded with coverage notes is recorded at severity 1 (calm) and still
+  // counts as fresh data — otherwise the freshness chip would age forever
+  // while the poller was in fact working. Unconfigured runs are ok:false.
+  const ok = (col: string) => `json_extract(${col}, '$.ok') = 1`;
   const [entities, lastRuns, lastOks, onsets] = await Promise.all([
     db.prepare("SELECT id, name FROM entities WHERE kind = 'poller' ORDER BY id").all<{ id: string; name: string }>(),
     db.prepare(latest("")).all<SignalRow>(),
-    db.prepare(latest("AND severity = 0")).all<SignalRow>(),
+    db.prepare(latest(`AND ${ok("value_text")}`)).all<SignalRow>(),
     db
       .prepare(
         `SELECT s.entity_id, MIN(s.observed_at) AS onset FROM signals s
-         WHERE s.metric = 'poller.status' AND s.severity > 0
+         WHERE s.metric = 'poller.status' AND NOT (${ok("s.value_text")})
            AND s.observed_at > coalesce((
              SELECT MAX(ok.observed_at) FROM signals ok
-             WHERE ok.metric = 'poller.status' AND ok.severity = 0 AND ok.entity_id = s.entity_id
+             WHERE ok.metric = 'poller.status' AND ${ok("ok.value_text")} AND ok.entity_id = s.entity_id
            ), 0)
          GROUP BY s.entity_id`,
       )

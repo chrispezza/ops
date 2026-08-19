@@ -4,6 +4,7 @@ import { Dot, timeAgo } from "../components";
 interface StatusDetail {
   ok: boolean;
   error?: string;
+  notes?: string[]; // ran fine, with coverage caveats — rendered calmly like "unconfigured"
   entities: number;
   signals: number;
   durationMs: number;
@@ -46,7 +47,7 @@ export function HealthPage(props: { health: PollerHealth[]; now: number }) {
                 <td class="num">{detail ? formatMs(detail.durationMs) : "—"}</td>
                 <td class="num">{detail?.entities ?? "—"}</td>
                 <td class="num">{detail?.signals ?? "—"}</td>
-                <td class={calm ? "status-note" : "error-text"}>{detail?.error ?? ""}</td>
+                <td class={calm ? "status-note" : "error-text"}>{detail?.error ?? detail?.notes?.join(" · ") ?? ""}</td>
               </tr>
             );
           })}
