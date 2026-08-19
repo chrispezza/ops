@@ -135,7 +135,7 @@ export function SortTh(props: {
   title?: string;
 }) {
   return (
-    <th scope="col" class={props.class} title={props.title} aria-sort={props.active ? props.dir : undefined}>
+    <th role="columnheader" scope="col" class={props.class} title={props.title} aria-sort={props.active ? props.dir : undefined}>
       <a class={props.active ? "sort active" : "sort"} href={props.href}>
         {props.label}
         {props.active && (

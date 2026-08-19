@@ -106,18 +106,18 @@ export function MapPage(props: {
             <summary>
               Archived <span class="rollup num">{props.archived.length}</span>
             </summary>
-            <table class="rows">
+            <table role="table" class="rows">
               {props.archived
                 .filter((a) => !props.owner || a.owner === props.owner)
                 .map((a) => (
-                  <tr class="row" data-href={`/e/${a.id}`}>
-                    <td class="c-dot">
+                  <tr role="row" class="row" data-href={`/e/${a.id}`}>
+                    <td role="cell" class="c-dot">
                       <Dot severity={0} />
                     </td>
-                    <td class="c-name">
+                    <td role="cell" class="c-name">
                       <a href={`/e/${a.id}`}>{a.name}</a>
                     </td>
-                    <td class="c-kind">
+                    <td role="cell" class="c-kind">
                       {a.category ?? a.kind}
                       {a.owner && <span class="owner"> · {a.owner}</span>}
                     </td>
@@ -202,7 +202,7 @@ function Section(props: {
               name/kind/score per section from content, so columns wandered
               between Static Sites and Web Apps (same disease entity and
               findings had; chips stay the one flexible column) */}
-          <table class="rows map-cols">
+          <table role="table" class="rows map-cols">
             <colgroup>
               <col class="w-dot" />
               <col class="w-name" />
@@ -225,25 +225,25 @@ function Section(props: {
 function Row(props: { row: TriageRow; now: number; stale: ReadonlySet<string> }) {
   const { view: e, score } = props.row;
   return (
-    <tr class="row" data-href={`/e/${e.id}`}>
-      <td class="c-dot">
+    <tr role="row" class="row" data-href={`/e/${e.id}`}>
+      <td role="cell" class="c-dot">
         <Dot severity={e.maxSeverity} />
       </td>
-      <td class="c-name">
+      <td role="cell" class="c-name">
         <a href={`/e/${e.id}`}>{e.name}</a>
       </td>
-      <td class="c-kind">
+      <td role="cell" class="c-kind">
         {e.category ?? e.kind}
         {e.owner && <span class="owner"> · {e.owner}</span>}
       </td>
-      <td class="c-chips">
+      <td role="cell" class="c-chips">
         <Chips row={props.row} now={props.now} stale={props.stale} />
       </td>
       {/* the map has no header row, so the tooltip must say what the naked number IS */}
-      <td class="num" title={`triage score${score.parts.length ? ` — ${score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ")}` : ""}`}>
+      <td role="cell" class="num" title={`triage score${score.parts.length ? ` — ${score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ")}` : ""}`}>
         {score.total > 0 ? score.total : ""}
       </td>
-      <td class="c-links">
+      <td role="cell" class="c-links">
         {/* the uptime signal's url IS the deployed site — one link, straight to prod */}
         <ExtLink url={e.latest["site.up"]?.url}>live</ExtLink>
         <ExtLink url={e.source_url} />

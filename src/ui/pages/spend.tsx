@@ -105,25 +105,25 @@ export function SpendPage(props: {
             daily poll, or record a prepaid balance in <a href="/settings">/settings</a>.
           </p>
         ) : (
-          <table class="rows">
+          <table role="table" class="rows">
             {props.entities.map((e) => {
               // spec §2.3's row anatomy is "MTD $41.20 / $60" — the denominator
               // comes from a budget scoped to this entity, when one exists
               const budget = budgets.find((b) => b.scope === e.id);
               return (
-                <tr class="row">
-                  <td class="c-name">
+                <tr role="row" class="row">
+                  <td role="cell" class="c-name">
                     <a href={`/e/${e.id}`}>{e.name}</a>
                   </td>
-                  <td class="num" title={budget ? `soft $${budget.soft_limit} · hard $${budget.hard_limit} (${budget.period})` : undefined}>
+                  <td role="cell" class="num" title={budget ? `soft $${budget.soft_limit} · hard $${budget.hard_limit} (${budget.period})` : undefined}>
                     MTD ${e.mtd.toFixed(2)}
                     {budget ? ` / $${budget.soft_limit}` : ""}
                   </td>
-                  <td>
+                  <td role="cell">
                     <Sparkline points={e.points} days={props.windowDays} now={now} />
                   </td>
-                  <td class="num">today ${e.today.toFixed(2)}</td>
-                  <td class="num">
+                  <td role="cell" class="num">today ${e.today.toFixed(2)}</td>
+                  <td role="cell" class="num">
                     {/* badges link to the entity page, where the signal's full
                         history lives — they were inert spans (spec §2.3 wants
                         badges "linking to the signal detail") */}
@@ -134,7 +134,7 @@ export function SpendPage(props: {
                       </a>
                     )}
                   </td>
-                  <td>
+                  <td role="cell">
                     {e.anomaly && e.anomaly.severity >= 2 && (
                       <a href={`/e/${e.id}`} class="chip" data-sev="2" title={e.anomaly.value_text ?? ""}>
                         anomaly ▲

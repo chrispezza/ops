@@ -26,6 +26,9 @@ const POLLER_LABELS: Record<string, string> = {
 };
 const pollerLabel = (id: string) => POLLER_LABELS[id] ?? id.replace(/_/g, " ");
 
+// Per-source banners beyond this collapse into one summary banner.
+const MAX_BANNERS = 2;
+
 // ux principle 2: never lie about freshness. The chip shows worst-case
 // staleness across sources; failing sources get a visible banner.
 export function FreshnessChip(props: { health: PollerHealth[]; now: number }) {
@@ -98,14 +101,24 @@ export function Layout(props: {
           {/* inside <main> so landmark navigation reaches it; role=status so its
               presence is announced. failingSince is the outage ONSET — the old
               lastRun-based copy read "failing since 7m ago" through a 4-day outage. */}
-          {failing.map((h) => (
+          {failing.length > MAX_BANNERS ? (
+            // one rail, not N: several sources failing at once used to stack a
+            // banner per source and push the page below the fold — the count and
+            // names say what's wrong, /health has the per-source detail
             <div class="banner amber" role="status">
-              {pollerLabel(h.name)} data is{" "}
-              {h.lastOk ? `${timeAgo(h.lastOk.observed_at, props.now)} old` : "unavailable"} (poller
-              failing for {h.failingSince ? timeAgo(h.failingSince, props.now) : "?"}) →{" "}
+              {failing.length} data sources are failing ({failing.map((h) => pollerLabel(h.name)).join(", ")}) →{" "}
               <a href="/health">/health</a>
             </div>
-          ))}
+          ) : (
+            failing.map((h) => (
+              <div class="banner amber" role="status">
+                {pollerLabel(h.name)} data is{" "}
+                {h.lastOk ? `${timeAgo(h.lastOk.observed_at, props.now)} old` : "unavailable"} (poller
+                failing for {h.failingSince ? timeAgo(h.failingSince, props.now) : "?"}) →{" "}
+                <a href="/health">/health</a>
+              </div>
+            ))
+          )}
           {props.title && !props.hasH1 && <h1 class="sr-only">{props.title}</h1>}
           {props.children}
         </main>

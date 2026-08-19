@@ -111,7 +111,7 @@ export function EntityPage(props: {
           .row class, so the existing mobile collapse hides them for free. */}
       {domains.size > 0 && (
         <section class="section">
-          <table class="rows metrics">
+          <table role="table" class="rows metrics">
             <colgroup>
               <col class="w-dot" />
               <col />
@@ -120,25 +120,27 @@ export function EntityPage(props: {
               <col class="w-obs" />
               <col class="w-links" />
             </colgroup>
-            <tr>
-              <th scope="col" />
-              <th scope="col">metric</th>
-              <th scope="col" class="num">value</th>
-              <th scope="col">{windowDays}d trend</th>
-              <th scope="col">observed</th>
-              <th scope="col" />
+            <tr role="row">
+              <th role="columnheader" scope="col" />
+              <th role="columnheader" scope="col">metric</th>
+              <th role="columnheader" scope="col" class="num">value</th>
+              <th role="columnheader" scope="col">{windowDays}d trend</th>
+              <th role="columnheader" scope="col">observed</th>
+              <th role="columnheader" scope="col" />
             </tr>
             {[...domains.entries()].map(([domain, signals]) => (
               <>
-                <tr class="domain">
-                  <th colspan={6}>{DOMAIN_LABELS[domain] ?? domain}</th>
+                <tr role="row" class="domain">
+                  <th role="rowheader" colspan={6}>{DOMAIN_LABELS[domain] ?? domain}</th>
                 </tr>
                 {signals.map((s) => (
-                  <tr class="row">
-                    <td class="c-dot">
+                  <tr role="row" class="row">
+                    <td role="cell" class="c-dot">
                       <Dot severity={s.severity} />
                     </td>
-                    <td class="c-name" title={s.metric}>
+                    {/* label first: the title is truncation recovery, and the
+                        raw metric id is not the text that was cut */}
+                    <td role="cell" class="c-name" title={`${labelForMetric(s.metric)} · ${s.metric}`}>
                       {labelForMetric(s.metric)}
                     </td>
                     {/* value_text as title whenever present: it is both the raw
@@ -146,12 +148,13 @@ export function EntityPage(props: {
                         text value the fixed column truncates. stale-data = the
                         source poller is failing (spec §3: dimmed, never hidden) */}
                     <td
+                      role="cell"
                       class={staleSet.has(s.source) ? "num stale-data" : "num"}
                       title={`${s.value_text ?? ""}${staleSet.has(s.source) ? " · source failing — value may be stale" : ""}`.trim() || undefined}
                     >
                       {formatSignalValue(s, now)}
                     </td>
-                    <td class="c-trend">
+                    <td role="cell" class="c-trend">
                       {props.trends.has(s.metric) && (
                         <TrendSpark
                           points={props.trends.get(s.metric) ?? []}
@@ -160,10 +163,10 @@ export function EntityPage(props: {
                         />
                       )}
                     </td>
-                    <td class="c-kind" title={isoMinute(s.observed_at)}>
+                    <td role="cell" class="c-kind" title={isoMinute(s.observed_at)}>
                       {timeAgo(s.observed_at, now)} ago
                     </td>
-                    <td class="c-links"><ExtLink url={s.url} /></td>
+                    <td role="cell" class="c-links"><ExtLink url={s.url} /></td>
                   </tr>
                 ))}
               </>
@@ -189,11 +192,11 @@ export function EntityPage(props: {
               codes like "usage.tokens_in"; sparkline per spec §2.5 */}
           <h2>{labelForMetric(series.metric)}</h2>
           <Sparkline points={series.points} days={windowDays} now={now} label={labelForMetric(series.metric)} />
-          <table class="rows">
+          <table role="table" class="rows">
             {series.points.map((p) => (
-              <tr class="row">
-                <td class="c-name num">{new Date(p.period_start * 1000).toISOString().slice(0, 10)}</td>
-                <td class="num">{p.total}</td>
+              <tr role="row" class="row">
+                <td role="cell" class="c-name num">{new Date(p.period_start * 1000).toISOString().slice(0, 10)}</td>
+                <td role="cell" class="num">{p.total}</td>
               </tr>
             ))}
           </table>
@@ -239,19 +242,19 @@ export function HistoryRows(props: { entityId: string; history: SignalRow[]; off
   const hasMore = props.history.length === HISTORY_PAGE;
   return (
     <>
-      <table class="rows">
+      <table role="table" class="rows">
         {props.history.map((s) => (
-          <tr class="row">
-            <td class="c-dot">
+          <tr role="row" class="row">
+            <td role="cell" class="c-dot">
               <Dot severity={s.severity} />
             </td>
-            <td class="c-kind">{new Date(s.observed_at * 1000).toISOString().replace("T", " ").slice(0, 16)}</td>
-            <td class="c-name" title={s.metric}>
+            <td role="cell" class="c-kind">{new Date(s.observed_at * 1000).toISOString().replace("T", " ").slice(0, 16)}</td>
+            <td role="cell" class="c-name" title={`${labelForMetric(s.metric)} · ${s.metric}`}>
               {labelForMetric(s.metric)}
             </td>
-            <td class="num">{formatSignalValue(s, props.now)}</td>
-            <td class="c-kind">{s.source}</td>
-            <td class="c-links"><ExtLink url={s.url} /></td>
+            <td role="cell" class="num">{formatSignalValue(s, props.now)}</td>
+            <td role="cell" class="c-kind">{s.source}</td>
+            <td role="cell" class="c-links"><ExtLink url={s.url} /></td>
           </tr>
         ))}
       </table>
