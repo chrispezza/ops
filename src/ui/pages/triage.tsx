@@ -1,7 +1,7 @@
 import { labelForMetric } from "../../config";
 import type { EntityView } from "../../core/queries";
 import { activityAt, type Score } from "../../core/score";
-import { Chip, Dot, ExtLink, newIssueUrl, safeHref } from "../components";
+import { Chip, Dot, ExtLink, newIssueUrl, safeHref, SortTh } from "../components";
 
 export interface TriageRow {
   view: EntityView;
@@ -92,37 +92,25 @@ export function TriageTable(props: {
     <table class="rows" id="triage-table">
       <tr>
         <th scope="col" />
-        <th scope="col">
-          <a class={`sort ${sort === "name" ? "active" : ""}`} href={sortHref(props.filters, "name")}>
-            entity
-          </a>
-        </th>
+        <SortTh label="entity" href={sortHref(props.filters, "name")} active={sort === "name"} dir="ascending" />
         <th scope="col">kind</th>
         <th scope="col">top signal</th>
         <th scope="col">why</th>
         {/* no hardcoded numbers: the weights live in /settings, so a tooltip
             quoting the defaults becomes a lie the moment they're edited —
             per-row breakdowns (expand the "why") carry the real arithmetic */}
-        <th scope="col" class="num" title="triage score: severity + breadth + staleness + zero-usage — weights in /settings, breakdown under each row's why">
-          <a class={`sort ${sort === "score" ? "active" : ""}`} href={sortHref(props.filters, "score")}>
-            score
-          </a>
-        </th>
-        <th scope="col" class="num">
-          <a class={`sort ${sort === "issues" ? "active" : ""}`} href={sortHref(props.filters, "issues")}>
-            issues
-          </a>
-        </th>
-        <th scope="col" class="num">
-          <a class={`sort ${sort === "vulns" ? "active" : ""}`} href={sortHref(props.filters, "vulns")}>
-            vulns
-          </a>
-        </th>
-        <th scope="col" class="num">
-          <a class={`sort ${sort === "stale" ? "active" : ""}`} href={sortHref(props.filters, "stale")}>
-            stale
-          </a>
-        </th>
+        <SortTh
+          label="score"
+          href={sortHref(props.filters, "score")}
+          active={sort === "score"}
+          dir="descending"
+          class="num"
+          title="triage score: severity + breadth + staleness + zero-usage — weights in /settings, breakdown under each row's why"
+        />
+        <SortTh label="issues" href={sortHref(props.filters, "issues")} active={sort === "issues"} dir="descending" class="num" />
+        <SortTh label="vulns" href={sortHref(props.filters, "vulns")} active={sort === "vulns"} dir="descending" class="num" />
+        {/* most-stale first = descending by the days shown in the column */}
+        <SortTh label="stale" href={sortHref(props.filters, "stale")} active={sort === "stale"} dir="descending" class="num" />
         <th scope="col" />
       </tr>
       {props.rows.map((r) => (

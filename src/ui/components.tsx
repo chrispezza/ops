@@ -121,3 +121,29 @@ export function newIssueUrl(sourceUrl: string): string | undefined {
   const safe = safeHref(sourceUrl);
   return safe ? `${safe}/issues/new` : undefined;
 }
+
+// A sortable column header. Sorts are single-direction today, so the active
+// column says which way it runs — the underline marked WHICH sort was on, but
+// asc/desc was invisible to everyone. aria-sort on the <th> gives AT the same
+// fact; the arrow is aria-hidden so the link name stays the column name.
+export function SortTh(props: {
+  label: string;
+  href: string;
+  active: boolean;
+  dir: "ascending" | "descending";
+  class?: string;
+  title?: string;
+}) {
+  return (
+    <th scope="col" class={props.class} title={props.title} aria-sort={props.active ? props.dir : undefined}>
+      <a class={props.active ? "sort active" : "sort"} href={props.href}>
+        {props.label}
+        {props.active && (
+          <span class="sort-dir" aria-hidden="true">
+            {props.dir === "descending" ? "↓" : "↑"}
+          </span>
+        )}
+      </a>
+    </th>
+  );
+}
