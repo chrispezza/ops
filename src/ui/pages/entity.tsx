@@ -108,7 +108,9 @@ export function EntityPage(props: {
           value column landed at a different x in every group and nothing lined
           up. A single fixed-layout table makes misalignment impossible, and one
           header row labels the columns for all groups. Domain rows carry no
-          .row class, so the existing mobile collapse hides them for free. */}
+          .row class; the mobile collapse keeps them visible by explicit
+          override (table.metrics tr.domain in tokens.css) — they replaced
+          the per-section h2s, so hiding them would lose the grouping. */}
       {domains.size > 0 && (
         <section class="section">
           <table role="table" class="rows metrics">
