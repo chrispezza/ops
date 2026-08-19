@@ -18,18 +18,18 @@ export function HealthPage(props: { health: PollerHealth[]; now: number }) {
       {health.length === 0 ? (
         <p class="hint">No poller has run yet. Trigger one below or wait for the cron.</p>
       ) : (
-        <table class="rows">
-          <tr>
-            <th scope="col" />
-            <th scope="col">poller</th>
-            <th scope="col">last run</th>
-            <th scope="col">last success</th>
-            <th scope="col" class="num">duration</th>
-            <th scope="col" class="num">entities</th>
-            <th scope="col" class="num">signals</th>
+        <table role="table" class="rows">
+          <tr role="row">
+            <th role="columnheader" scope="col" />
+            <th role="columnheader" scope="col">poller</th>
+            <th role="columnheader" scope="col">last run</th>
+            <th role="columnheader" scope="col">last success</th>
+            <th role="columnheader" scope="col" class="num">duration</th>
+            <th role="columnheader" scope="col" class="num">entities</th>
+            <th role="columnheader" scope="col" class="num">signals</th>
             {/* "detail", not "error" — this column also holds the calm
                 "unconfigured: set X" states, which are not errors */}
-            <th scope="col">detail</th>
+            <th role="columnheader" scope="col">detail</th>
           </tr>
           {health.map((h) => {
             const detail = parseDetail(h.lastRun?.value_text);
@@ -37,17 +37,17 @@ export function HealthPage(props: { health: PollerHealth[]; now: number }) {
             // README promises "unconfigured pollers listed calmly, a real failure in red"
             const calm = (h.lastRun?.severity ?? 0) <= 1;
             return (
-              <tr class="row">
-                <td class="c-dot">
+              <tr role="row" class="row">
+                <td role="cell" class="c-dot">
                   <Dot severity={h.lastRun?.severity ?? 0} />
                 </td>
-                <td class="c-name">{h.name}</td>
-                <td>{h.lastRun ? `${timeAgo(h.lastRun.observed_at, now)} ago` : "never"}</td>
-                <td>{h.lastOk ? `${timeAgo(h.lastOk.observed_at, now)} ago` : "never"}</td>
-                <td class="num">{detail ? formatMs(detail.durationMs) : "—"}</td>
-                <td class="num">{detail?.entities ?? "—"}</td>
-                <td class="num">{detail?.signals ?? "—"}</td>
-                <td class={calm ? "status-note" : "error-text"}>{detail?.error ?? detail?.notes?.join(" · ") ?? ""}</td>
+                <td role="cell" class="c-name">{h.name}</td>
+                <td role="cell">{h.lastRun ? `${timeAgo(h.lastRun.observed_at, now)} ago` : "never"}</td>
+                <td role="cell">{h.lastOk ? `${timeAgo(h.lastOk.observed_at, now)} ago` : "never"}</td>
+                <td role="cell" class="num">{detail ? formatMs(detail.durationMs) : "—"}</td>
+                <td role="cell" class="num">{detail?.entities ?? "—"}</td>
+                <td role="cell" class="num">{detail?.signals ?? "—"}</td>
+                <td role="cell" class={calm ? "status-note" : "error-text"}>{detail?.error ?? detail?.notes?.join(" · ") ?? ""}</td>
               </tr>
             );
           })}

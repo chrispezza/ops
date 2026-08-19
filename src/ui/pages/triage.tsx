@@ -89,13 +89,13 @@ export function TriageTable(props: {
     );
   }
   return (
-    <table class="rows" id="triage-table">
-      <tr>
-        <th scope="col" />
+    <table role="table" class="rows" id="triage-table">
+      <tr role="row">
+        <th role="columnheader" scope="col" />
         <SortTh label="entity" href={sortHref(props.filters, "name")} active={sort === "name"} dir="ascending" />
-        <th scope="col">kind</th>
-        <th scope="col">top signal</th>
-        <th scope="col">why</th>
+        <th role="columnheader" scope="col">kind</th>
+        <th role="columnheader" scope="col">top signal</th>
+        <th role="columnheader" scope="col">why</th>
         {/* no hardcoded numbers: the weights live in /settings, so a tooltip
             quoting the defaults becomes a lie the moment they're edited —
             per-row breakdowns (expand the "why") carry the real arithmetic */}
@@ -111,7 +111,7 @@ export function TriageTable(props: {
         <SortTh label="vulns" href={sortHref(props.filters, "vulns")} active={sort === "vulns"} dir="descending" class="num" />
         {/* most-stale first = descending by the days shown in the column */}
         <SortTh label="stale" href={sortHref(props.filters, "stale")} active={sort === "stale"} dir="descending" class="num" />
-        <th scope="col" />
+        <th role="columnheader" scope="col" />
       </tr>
       {props.rows.map((r) => (
         <Row row={r} now={props.now} stale={props.stale} />
@@ -127,21 +127,21 @@ function Row(props: { row: TriageRow; now: number; stale?: ReadonlySet<string> }
     .sort((a, b) => b.severity - a.severity)[0];
   const staleDays = Math.floor((props.now - activityAt(e)) / 86_400);
   return (
-    <tr class="row" data-href={`/e/${e.id}`}>
-      <td class="c-dot">
+    <tr role="row" class="row" data-href={`/e/${e.id}`}>
+      <td role="cell" class="c-dot">
         <Dot severity={e.maxSeverity} />
       </td>
-      <td class="c-name">
+      <td role="cell" class="c-name">
         <a href={`/e/${e.id}`}>{e.name}</a>
       </td>
-      <td class="c-kind">
+      <td role="cell" class="c-kind">
         {e.category ?? e.kind}
         {e.owner && <span class="owner"> · {e.owner}</span>}
       </td>
-      <td class="c-chips">
+      <td role="cell" class="c-chips">
         {worst ? <Chip label={labelForMetric(worst.metric)} signal={worst} now={props.now} staleSources={props.stale} /> : <span class="hint">—</span>}
       </td>
-      <td class="c-why">
+      <td role="cell" class="c-why">
         {/* score breakdown behind a native disclosure — no endpoint needed.
             No parts = plain dash: an expander opening an empty list is a trap */}
         {score.parts.length === 0 ? (
@@ -159,19 +159,19 @@ function Row(props: { row: TriageRow; now: number; stale?: ReadonlySet<string> }
           </details>
         )}
       </td>
-      <td class="num">{score.total}</td>
-      <td class="num c-kind">
+      <td role="cell" class="num">{score.total}</td>
+      <td role="cell" class="num c-kind">
         {e.latest["issues.open"]?.value_num != null && (
           <a href={safeHref(e.latest["issues.open"]?.url) ?? `/e/${e.id}`}>{e.latest["issues.open"]?.value_num}</a>
         )}
       </td>
-      <td class="num c-kind">
+      <td role="cell" class="num c-kind">
         {e.latest["deps.vuln_count"]?.value_num != null && (
           <a href={safeHref(e.latest["deps.vuln_count"]?.url) ?? `/e/${e.id}`}>{e.latest["deps.vuln_count"]?.value_num}</a>
         )}
       </td>
-      <td class="num c-kind">{staleDays > 0 ? `${staleDays}d` : ""}</td>
-      <td class="c-links">
+      <td role="cell" class="num c-kind">{staleDays > 0 ? `${staleDays}d` : ""}</td>
+      <td role="cell" class="c-links">
         <ExtLink url={e.source_url} />
         {e.kind === "repo" && e.source_url && <ExtLink url={newIssueUrl(e.source_url)}>+issue</ExtLink>}
       </td>

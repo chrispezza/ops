@@ -27,23 +27,23 @@ export function SettingsPage(props: {
       <section class="section">
         <h2>Budgets</h2>
         {props.budgets.length > 0 && (
-          <table class="rows">
-            <tr>
-              <th scope="col">scope</th>
-              <th scope="col">metric</th>
-              <th scope="col">period</th>
-              <th scope="col" class="num">soft</th>
-              <th scope="col" class="num">hard</th>
-              <th scope="col" />
+          <table role="table" class="rows">
+            <tr role="row">
+              <th role="columnheader" scope="col">scope</th>
+              <th role="columnheader" scope="col">metric</th>
+              <th role="columnheader" scope="col">period</th>
+              <th role="columnheader" scope="col" class="num">soft</th>
+              <th role="columnheader" scope="col" class="num">hard</th>
+              <th role="columnheader" scope="col" />
             </tr>
             {props.budgets.map((b) => (
-              <tr class="row">
-                <td>{b.scope}</td>
-                <td>{b.metric}</td>
-                <td>{b.period}</td>
-                <td class="num">${b.soft_limit}</td>
-                <td class="num">${b.hard_limit}</td>
-                <td class="c-links">
+              <tr role="row" class="row">
+                <td role="cell">{b.scope}</td>
+                <td role="cell">{b.metric}</td>
+                <td role="cell">{b.period}</td>
+                <td role="cell" class="num">${b.soft_limit}</td>
+                <td role="cell" class="num">${b.hard_limit}</td>
+                <td role="cell" class="c-links">
                   <form method="post" action="/settings/budgets/delete">
                     <input type="hidden" name="id" value={String(b.id)} />
                     <button type="submit">delete</button>
@@ -80,21 +80,21 @@ export function SettingsPage(props: {
       <section class="section">
         <h2>Prepaid balances</h2>
         {props.balances.length > 0 && (
-          <table class="rows">
-            <tr>
-              <th scope="col">entity</th>
-              <th scope="col">name</th>
-              <th scope="col" class="num">starting</th>
-              <th scope="col">as of</th>
-              <th scope="col" />
+          <table role="table" class="rows">
+            <tr role="row">
+              <th role="columnheader" scope="col">entity</th>
+              <th role="columnheader" scope="col">name</th>
+              <th role="columnheader" scope="col" class="num">starting</th>
+              <th role="columnheader" scope="col">as of</th>
+              <th role="columnheader" scope="col" />
             </tr>
             {props.balances.map((b) => (
-              <tr class="row">
-                <td class="c-kind">{b.entityId}</td>
-                <td>{b.name}</td>
-                <td class="num">${b.startingUsd.toFixed(2)}</td>
-                <td class="c-kind">{new Date(b.asOf * 1000).toISOString().slice(0, 10)}</td>
-                <td class="c-links">
+              <tr role="row" class="row">
+                <td role="cell" class="c-kind">{b.entityId}</td>
+                <td role="cell">{b.name}</td>
+                <td role="cell" class="num">${b.startingUsd.toFixed(2)}</td>
+                <td role="cell" class="c-kind">{new Date(b.asOf * 1000).toISOString().slice(0, 10)}</td>
+                <td role="cell" class="c-links">
                   <form method="post" action="/settings/balances/delete">
                     <input type="hidden" name="entity_id" value={b.entityId} />
                     <button type="submit">delete</button>

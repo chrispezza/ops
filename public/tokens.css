@@ -538,12 +538,33 @@ details.agent-prompt button { margin-top: var(--space-2); }
 details.archived-section .row td { opacity: 0.7; }
 tr.cluster-cont td { border-top-color: transparent; } /* clustered findings read as one entity block */
 
+/* Between the mobile collapse and full width the fixed metric columns can
+   truncate the longest labels (hygiene.missing.eval.*). A title only helps
+   mouse users; letting the label wrap gives keyboard and touch users the
+   same text, at the cost of a taller row for those few labels. */
+@media (min-width: 641px) and (max-width: 900px) {
+  table.findings-cols td.c-kind,
+  table.metrics td.c-name { white-space: normal; }
+}
+
 /* mobile: read-only glance — ux-spec §4: tables collapse to definition-list rows */
 @media (max-width: 640px) {
   main { padding: var(--space-2); }
 
+  /* Changing display on table parts strips their implicit ARIA roles in most
+     engines, so the markup carries explicit role=table/row/columnheader/cell
+     — the collapse is visual only. The header row is hidden visually, NOT with
+     display:none, so each collapsed cell keeps its column header for AT
+     ("kind: static_site") instead of losing the association entirely. */
   table.rows, table.rows tbody { display: block; }
-  table.rows tr:not(.row) { display: none; }
+  table.rows tr:not(.row) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   tr.row {
     display: flex;
     flex-wrap: wrap;
@@ -568,13 +589,24 @@ tr.cluster-cont td { border-top-color: transparent; } /* clustered findings read
 
   /* sort links live in the header row — the collapse must not delete the page's
      primary affordance. This band is also 200% zoom on a 1280px screen. */
-  table.rows tr:not(.row):has(a.sort) { display: flex; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-1) 0; }
+  table.rows tr:not(.row):has(a.sort) {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+  }
   table.rows tr:not(.row):has(a.sort) th { display: inline-block; padding: 0; }
 
   /* the domain group rows replaced the per-section h2s, so unlike the column
      header they must survive the collapse — without this, mobile loses the
      CI / Dependencies / Site grouping entirely */
-  table.metrics tr.domain { display: block; }
+  table.metrics tr.domain { position: static; width: auto; height: auto; overflow: visible; clip-path: none; display: block; }
   table.metrics tr.domain th {
     display: block;
     padding: var(--space-4) 0 var(--space-1);

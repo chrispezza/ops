@@ -236,6 +236,50 @@ describe("health + degradation", () => {
     expect(map).toContain("banner amber");
     expect(map).toContain("/health");
   });
+
+  it("collapses more than two failing sources into one summary banner", async () => {
+    const dead = (id: string): Poller => ({
+      id,
+      schedule: "hourly",
+      metricSemantics: {},
+      poll: async () => {
+        throw new Error(`${id} down`);
+      },
+    });
+    await runPollers(env, "hourly", { pollers: [dead("github"), dead("uptime"), dead("cloudflare")], now: NOW });
+    const map = await (await SELF.fetch("https://ops.local/")).text();
+    expect(map.match(/banner amber/g)).toHaveLength(1);
+    expect(map).toContain("3 data sources are failing (Cloudflare, GitHub, Uptime)");
+    // two failing sources still get their own, more specific banners
+    await env.DB.batch([env.DB.prepare("DELETE FROM signals"), env.DB.prepare("DELETE FROM entities")]);
+    await runPollers(env, "hourly", { pollers: [dead("github"), dead("uptime")], now: NOW });
+    const two = await (await SELF.fetch("https://ops.local/")).text();
+    expect(two.match(/banner amber/g)).toHaveLength(2);
+  });
+});
+
+describe("table semantics survive the mobile collapse", () => {
+  it("carries explicit table roles so display changes cannot strip them", async () => {
+    await seedRepo();
+    const noop: Poller = { id: "github", schedule: "hourly", metricSemantics: {}, poll: async () => ({ entities: [], signals: [] }) };
+    await runPollers(env, "hourly", { pollers: [noop], now: NOW }); // /health only renders a table once a poller has run
+    for (const path of ["/", "/triage", "/findings", "/health", "/e/repo:clownware/gittunes"]) {
+      const html = await (await SELF.fetch(`https://ops.local${path}`)).text();
+      expect(html, path).toContain('<table role="table"');
+      expect(html, path).toContain('<tr role="row"');
+      expect(html, path).toContain('<td role="cell"');
+    }
+    const triage = await (await SELF.fetch("https://ops.local/triage")).text();
+    expect(triage).toContain('<th role="columnheader"');
+  });
+
+  it("titles a truncatable metric cell with its display label, not the raw id", async () => {
+    await seedRepo();
+    const findings = await (await SELF.fetch("https://ops.local/findings")).text();
+    expect(findings).toContain('title="CI status · ci.status"');
+    const entity = await (await SELF.fetch("https://ops.local/e/repo:clownware/gittunes")).text();
+    expect(entity).toContain('title="CI status · ci.status"');
+  });
 });
 
 describe("same-origin gate", () => {

@@ -122,7 +122,7 @@ function FindingsTable(props: {
     // fixed shared geometry: each band/group renders its own table, and auto
     // layout put the value column at a different x per band — same disease the
     // entity page had, same cure
-    <table class="rows findings-cols">
+    <table role="table" class="rows findings-cols">
       <colgroup>
         <col class="w-dot" />
         <col />
@@ -131,32 +131,32 @@ function FindingsTable(props: {
         <col class="w-obs" />
         <col class="w-links" />
       </colgroup>
-      <tr>
+      <tr role="row">
         {props.filters ? (
           <SortTh label="sev" href={sortHref(props.filters, "severity")} active={sort === "severity"} dir="descending" />
         ) : (
-          <th scope="col" />
+          <th role="columnheader" scope="col" />
         )}
-        <th scope="col">entity</th>
-        <th scope="col">metric</th>
-        <th scope="col">value</th>
+        <th role="columnheader" scope="col">entity</th>
+        <th role="columnheader" scope="col">metric</th>
+        <th role="columnheader" scope="col">value</th>
         {props.filters ? (
           // newest first
           <SortTh label="observed" href={sortHref(props.filters, "recent")} active={sort === "recent"} dir="descending" />
         ) : (
-          <th scope="col">observed</th>
+          <th role="columnheader" scope="col">observed</th>
         )}
-        <th scope="col" />
+        <th role="columnheader" scope="col" />
       </tr>
       {props.rows.map((r) => {
         const firstOfCluster = r.entity_id !== previousEntity;
         previousEntity = r.entity_id;
         return (
-        <tr class={firstOfCluster ? "row" : "row cluster-cont"} data-href={`/e/${r.entity_id}`}>
-          <td class="c-dot">
+        <tr role="row" class={firstOfCluster ? "row" : "row cluster-cont"} data-href={`/e/${r.entity_id}`}>
+          <td role="cell" class="c-dot">
             <Dot severity={r.severity} />
           </td>
-          <td class="c-name">
+          <td role="cell" class="c-name">
             {firstOfCluster && (
               <>
                 <a href={`/e/${r.entity_id}`}>{r.entity_name}</a>
@@ -164,20 +164,24 @@ function FindingsTable(props: {
               </>
             )}
           </td>
-          <td class="c-kind" title={r.metric}>
+          {/* title = the display label first (truncation recovery must show the
+              text that was cut, not a raw id), then the metric code — the
+              query contract for ?domain= */}
+          <td role="cell" class="c-kind" title={`${labelForMetric(r.metric)} · ${r.metric}`}>
             {labelForMetric(r.metric)}
           </td>
           {/* value_text carries the explanation when a number is shown — keep it
               reachable; stale = the source poller is failing (spec §3: dimmed,
               never hidden) */}
           <td
+            role="cell"
             class={props.stale?.has(r.source) ? "num stale-data" : "num"}
             title={`${r.value_num != null && r.value_text ? r.value_text : ""}${props.stale?.has(r.source) ? " · source failing — value may be stale" : ""}`.trim() || undefined}
           >
             {formatSignalValue(r, props.now)}
           </td>
-          <td class="c-kind">{timeAgo(r.observed_at, props.now)} ago</td>
-          <td class="c-links">
+          <td role="cell" class="c-kind">{timeAgo(r.observed_at, props.now)} ago</td>
+          <td role="cell" class="c-links">
             <ExtLink url={r.url} />
           </td>
         </tr>
