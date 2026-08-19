@@ -268,12 +268,33 @@ td.c-kind { color: hsl(var(--fg-muted)); font-size: var(--text-xs); }
 td.c-links { text-align: right; white-space: nowrap; }
 td.c-links a { margin-left: var(--space-2); font-size: var(--text-sm); color: hsl(var(--fg-muted)); }
 td.c-links a:hover { color: hsl(var(--link)); }
+/* Links in cells and the attention strip wear ink, not --link, so nothing but
+   position said "this is a link" — and on the entity page the same c-name
+   cell holds plain text. A muted underline is the one non-color affordance
+   that survives both registers; hover restores the full-strength rule. */
+td.c-name a,
+td.c-links a,
+td.num a,
+p.attention a {
+  text-decoration: underline;
+  text-decoration-color: hsl(var(--border-strong));
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+td.c-name a:hover,
+td.c-links a:hover,
+td.num a:hover,
+p.attention a:hover {
+  text-decoration-color: currentColor;
+}
 a.chip { color: hsl(var(--fg-body)); }
 a.chip:hover { color: hsl(var(--link)); }
 td.c-chips { white-space: nowrap; }
 
 th a.sort { color: hsl(var(--fg-muted)); }
 th a.sort.active { color: hsl(var(--fg)); text-decoration: underline; text-decoration-color: hsl(var(--accent)); }
+/* direction arrow on the active sort — the underline said WHICH, not which WAY */
+th a.sort .sort-dir { margin-left: 2px; color: hsl(var(--fg-muted)); }
 
 .owner-toggle { display: inline-flex; gap: var(--space-2); align-items: center; margin-left: var(--space-2); }
 .owner-toggle a { color: hsl(var(--fg-muted)); font-size: var(--text-sm); }

@@ -1,6 +1,6 @@
 import { labelForMetric } from "../../config";
 import type { FindingRow } from "../../core/queries";
-import { Dot, ExtLink, formatSignalValue, timeAgo } from "../components";
+import { Dot, ExtLink, formatSignalValue, SortTh, timeAgo } from "../components";
 
 export interface FindingsFilters {
   minSeverity: number;
@@ -132,27 +132,20 @@ function FindingsTable(props: {
         <col class="w-links" />
       </colgroup>
       <tr>
-        <th scope="col">
-          {props.filters ? (
-            <a class={`sort ${sort === "severity" ? "active" : ""}`} href={sortHref(props.filters, "severity")}>
-              sev
-            </a>
-          ) : (
-            ""
-          )}
-        </th>
+        {props.filters ? (
+          <SortTh label="sev" href={sortHref(props.filters, "severity")} active={sort === "severity"} dir="descending" />
+        ) : (
+          <th scope="col" />
+        )}
         <th scope="col">entity</th>
         <th scope="col">metric</th>
         <th scope="col">value</th>
-        <th scope="col">
-          {props.filters ? (
-            <a class={`sort ${sort === "recent" ? "active" : ""}`} href={sortHref(props.filters, "recent")}>
-              observed
-            </a>
-          ) : (
-            "observed"
-          )}
-        </th>
+        {props.filters ? (
+          // newest first
+          <SortTh label="observed" href={sortHref(props.filters, "recent")} active={sort === "recent"} dir="descending" />
+        ) : (
+          <th scope="col">observed</th>
+        )}
         <th scope="col" />
       </tr>
       {props.rows.map((r) => {

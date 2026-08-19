@@ -83,6 +83,17 @@ describe("triage page", () => {
     const filtered = await (await SELF.fetch("https://ops.local/triage?min_severity=4")).text();
     expect(filtered).toContain("Nothing matches");
   });
+
+  it("marks the active sort's direction for eyes and AT alike", async () => {
+    await seedRepo();
+    const byScore = await (await SELF.fetch("https://ops.local/triage")).text();
+    expect(byScore).toMatch(/<th[^>]*aria-sort="descending"[^>]*>\s*<a[^>]*>score/);
+    expect(byScore).toContain("↓");
+    expect(byScore.match(/aria-sort=/g)).toHaveLength(1); // only the active column claims a direction
+    const byName = await (await SELF.fetch("https://ops.local/triage?sort=name")).text();
+    expect(byName).toMatch(/<th[^>]*aria-sort="ascending"[^>]*>\s*<a[^>]*>entity/);
+    expect(byName).toContain("↑");
+  });
 });
 
 describe("entity page", () => {
