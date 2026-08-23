@@ -94,6 +94,59 @@ describe("entity page agent prompt block", () => {
   });
 });
 
+describe("worker error-rate prompt", () => {
+  const worker: EntityRow = {
+    ...repo,
+    id: "worker:deprep",
+    kind: "worker",
+    category: "vendor_api",
+    name: "deprep",
+    owner: null,
+    source_url: "https://dash.cloudflare.com/acct/workers/services/view/deprep",
+  };
+  const errSig = (severity: number): SignalRow =>
+    sig("cf.error_rate", 1.51, severity, "23 of 1523 requests", "https://dash.cloudflare.com/acct/workers/services/view/deprep");
+
+  it("builds findings, wrangler-based approach, and the poller-verified done-criterion", () => {
+    const prompt = buildAgentPrompt(worker, [errSig(2)], NOW);
+    expect(prompt).toContain("Cloudflare Worker deprep");
+    expect(prompt).toContain("error rate 1.51% (23 of 1523 requests, trailing day) — https://dash.cloudflare.com/acct/workers/services/view/deprep");
+    expect(prompt).toContain("wrangler tail deprep");
+    expect(prompt).toContain("wrangler deployments list");
+    expect(prompt).toContain('a wrangler config naming "deprep"');
+    expect(prompt).toContain("ops signal: cf.error_rate, severity 0");
+  });
+
+  it("returns null for a healthy worker and for workers without the signal", () => {
+    expect(buildAgentPrompt(worker, [errSig(0)], NOW)).toBeNull();
+    expect(buildAgentPrompt(worker, [sig("cf.requests", 1523, 0)], NOW)).toBeNull();
+  });
+
+  it("renders the prompt block on the worker entity page", async () => {
+    await env.DB.batch([env.DB.prepare("DELETE FROM signals"), env.DB.prepare("DELETE FROM entities")]);
+    await upsertEntities(
+      env.DB,
+      [{ id: "worker:deprep", kind: "worker", category: "vendor_api", name: "deprep" }],
+      NOW,
+    );
+    await insertSignals(env.DB, "cloudflare", [
+      {
+        entityId: "worker:deprep",
+        metric: "cf.error_rate",
+        valueNum: 1.51,
+        valueText: "23 of 1523 requests",
+        severity: 2,
+        observedAt: NOW,
+        dedupeKey: "d",
+      },
+    ]);
+    const page = await (await SELF.fetch("https://ops.local/e/worker:deprep")).text();
+    expect(page).toContain("agent-prompt");
+    expect(page).toContain("copy prompt");
+    expect(page).toContain("elevated error rate on the Cloudflare Worker deprep");
+  });
+});
+
 describe("expanded finding coverage (issue #24)", () => {
   it("a down site produces a prompt even with green CI, and leads it", () => {
     const prompt = buildAgentPrompt(
@@ -109,6 +162,16 @@ describe("expanded finding coverage (issue #24)", () => {
     expect(prompt).toContain("site.up = up");
     // severity order: the site finding precedes any CI mention in the approach
     expect(prompt!.indexOf("DOWN")).toBeLessThan(prompt!.indexOf("CI failure"));
+  });
+
+  it("covers a worker error rate attributed to the repo", () => {
+    const prompt = buildAgentPrompt(
+      repo,
+      [sig("cf.error_rate", 2.4, 2, "12 of 500 requests", "https://dash.cloudflare.com/acct/workers/services/view/gittunes")],
+      NOW,
+    );
+    expect(prompt).toContain("Worker error rate 2.4% (12 of 500 requests) — https://dash.cloudflare.com/acct/workers/services/view/gittunes");
+    expect(prompt).toContain("ops signal: cf.error_rate");
   });
 
   it("covers lighthouse, docs gaps and expected-but-missing metrics", () => {
