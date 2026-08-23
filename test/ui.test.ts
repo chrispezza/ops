@@ -385,7 +385,9 @@ describe("response hardening", () => {
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    // same-origin, not no-referrer: no-referrer nulls the Origin header on
+    // form POSTs, which the same-origin gate would then refuse (see index.tsx)
+    expect(res.headers.get("referrer-policy")).toBe("same-origin");
   });
 
   it("refuses a cross-origin POST to a mutating route", async () => {

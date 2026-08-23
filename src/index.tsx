@@ -66,9 +66,11 @@ app.use("*", async (c, next) => {
   return next();
 });
 
-// Same-origin gate on every state-mutating request. Browsers always send Origin
-// on POST, so a match proves the request came from a page served by this
-// deployment: it blocks cross-site form CSRF and, because non-browser clients
+// Same-origin gate on every state-mutating request. Browsers send Origin on
+// POST — but only a real one when the document's referrer policy allows it
+// (see the same-origin header below; no-referrer serializes it as "null") —
+// so a match proves the request came from a page served by this deployment:
+// it blocks cross-site form CSRF and, because non-browser clients
 // send no Origin at all, anonymous curl against the write routes — notably
 // /health/run, which fans out to every upstream API on a single request.
 // Cloudflare Access (README) remains the authentication layer; this is the
@@ -104,7 +106,10 @@ app.use("*", async (c, next) => {
   if (!c.res.headers.get("content-type")?.includes("text/html")) return;
   c.res.headers.set("content-security-policy", CSP);
   c.res.headers.set("x-content-type-options", "nosniff");
-  c.res.headers.set("referrer-policy", "no-referrer");
+  // same-origin, not no-referrer: under no-referrer browsers serialize the
+  // Origin header as "null" on form-submission POSTs, which the same-origin
+  // gate above would refuse — locking out /health/run from its own page.
+  c.res.headers.set("referrer-policy", "same-origin");
   c.res.headers.set("x-frame-options", "DENY");
 });
 
