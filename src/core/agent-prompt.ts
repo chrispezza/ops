@@ -5,7 +5,10 @@ import type { EntityRow, SignalRow } from "./queries";
 // (the next poll verifies the agent's work) — and delegates everything it can't
 // know (checkout paths, conventions, test commands) to the agent itself.
 // Read here, act there (ADR-001): Ops never dispatches anything.
+// Repos and Workers get prompts; other kinds (vendor consoles, databases) have
+// no agent-actionable surface, so their pages stay prompt-free.
 export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: number): string | null {
+  if (entity.kind === "worker") return buildWorkerPrompt(entity, latest, now);
   if (entity.kind !== "repo") return null;
   const by = (metric: string) => latest.find((s) => s.metric === metric);
   const link = (s: SignalRow | undefined) => (s?.url ? ` — ${s.url}` : "");
@@ -20,6 +23,15 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
   if (site && site.severity > 0) {
     findings.push(`- the deployed site is DOWN${link(site)} — highest priority`);
     done.push("- the site responds successfully (ops signal: site.up = up)");
+  }
+  // Attributed to the repo only if a poller ever lands it here — today the
+  // Cloudflare poller puts cf.error_rate on worker: entities (see below).
+  const errRate = by("cf.error_rate");
+  if (errRate && errRate.severity > 0) {
+    findings.push(
+      `- Worker error rate ${errRate.value_num ?? "?"}%${errRate.value_text ? ` (${errRate.value_text})` : ""}${link(errRate)}`,
+    );
+    done.push("- error rate back at or below 1% over the trailing day (ops signal: cf.error_rate)");
   }
   const lhci = by("lhci.performance");
   if (lhci && lhci.severity > 0) {
@@ -89,6 +101,35 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     "",
     "Definition of done (the ops dashboard re-checks these automatically on its next hourly poll):",
     ...(done.length > 0 ? done : ["- all findings above are resolved or explicitly triaged with reasons"]),
+    "",
+    "Work in small conventional commits; open a PR rather than pushing to the default branch unless the repo's own docs say otherwise.",
+  ].join("\n");
+}
+
+// Worker entities carry Cloudflare telemetry, not repo signals — the one
+// actionable finding is an elevated error rate. Ops doesn't know which repo
+// deploys the Worker (the poller only sees script names), so locating the
+// source is delegated to the agent like every other unknowable.
+function buildWorkerPrompt(entity: EntityRow, latest: SignalRow[], now: number): string | null {
+  const errRate = latest.find((s) => s.metric === "cf.error_rate");
+  if (!errRate || errRate.severity === 0) return null;
+
+  const script = entity.id.replace(/^worker:/, "");
+  const date = new Date(now * 1000).toISOString().slice(0, 10);
+  return [
+    `Investigate and fix the elevated error rate on the Cloudflare Worker ${script}.`,
+    "",
+    `Findings from the ops dashboard, as of ${date}:`,
+    `- error rate ${errRate.value_num ?? "?"}%${errRate.value_text ? ` (${errRate.value_text}, trailing day)` : ""}${errRate.url ? ` — ${errRate.url}` : ""}`,
+    "",
+    "Approach:",
+    `1. Find the repo that deploys this Worker (a wrangler config naming "${script}") and read its CLAUDE.md / README for conventions before changing anything.`,
+    `2. Capture live failures: wrangler tail ${script} (or the Cloudflare dash link above) — note status codes, exceptions, and which routes fail.`,
+    `3. Correlate with recent deploys: wrangler deployments list — a rate that jumped after a deploy points at that change; a rollback is a legitimate stopgap while you fix forward.`,
+    "4. Fix the root cause in the deploying repo, run its tests and quality gates, and ship through its normal pipeline rather than an ad-hoc deploy.",
+    "",
+    "Definition of done (the ops dashboard re-checks this on its next daily poll):",
+    "- error rate back at or below 1% over the trailing day (ops signal: cf.error_rate, severity 0)",
     "",
     "Work in small conventional commits; open a PR rather than pushing to the default branch unless the repo's own docs say otherwise.",
   ].join("\n");
