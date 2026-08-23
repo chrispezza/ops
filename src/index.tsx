@@ -104,7 +104,10 @@ app.use("*", async (c, next) => {
   if (!c.res.headers.get("content-type")?.includes("text/html")) return;
   c.res.headers.set("content-security-policy", CSP);
   c.res.headers.set("x-content-type-options", "nosniff");
-  c.res.headers.set("referrer-policy", "no-referrer");
+  // same-origin, not no-referrer: under no-referrer browsers serialize the
+  // Origin header as "null" on form-submission POSTs, which the same-origin
+  // gate above would refuse — locking out /health/run from its own page.
+  c.res.headers.set("referrer-policy", "same-origin");
   c.res.headers.set("x-frame-options", "DENY");
 });
 
