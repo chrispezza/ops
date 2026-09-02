@@ -233,8 +233,10 @@ To seed a local instance, apply migrations with
 Implement the `Poller` interface in `src/pollers/`, then add it to the array in
 [`src/pollers/index.ts`](src/pollers/index.ts). Return entities and signals;
 the runner handles storage, dedup, failure isolation and health reporting.
-Read its credential from `env` and return an empty result when it is missing,
-so the poller stays dormant rather than erroring on every run.
+Read its credential from `env`; when it is missing, throw an error whose
+message starts with `unconfigured:` (e.g. `unconfigured: set the FOO_KEY
+secret to enable this poller`). The runner recognises that prefix and records
+the poller as unconfigured on `/health` instead of as a failure.
 
 ## Design notes
 

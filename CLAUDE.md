@@ -62,9 +62,7 @@ from stored signals on each pass in `src/core/derive.ts` and
 - Read credentials from `env`. If one is absent, throw
   `new Error("unconfigured: set the X secret to enable this poller")`. The
   runner recognises the `unconfigured:` prefix and records a calm severity-1
-  state on `/health` instead of a failure. (The README's "return an empty
-  result" wording is older than this convention; the prefix is what the
-  runner actually checks.)
+  state on `/health` instead of a failure.
 - A poller that truncates its own work (caps, pagination limits) must say so in
   `notes`. No silent caps.
 - Entity ids are `{kind}:{natural_key}` and must be stable across runs.
