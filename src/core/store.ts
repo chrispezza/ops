@@ -26,6 +26,21 @@ ON CONFLICT(entity_id, metric, dedupe_key) DO UPDATE SET
   period_start = excluded.period_start,
   period_end = excluded.period_end`;
 
+// ADR-005: after the rows land, point signal_latest at the newest row per
+// (entity, metric). Looking the row up by its UNIQUE key (not by id) covers
+// the upsert path, where a fixed-dedupe row keeps its id but moves forward in
+// observed_at. Two index seeks per signal, whatever the history length.
+const LATEST_REFRESH_SQL = `
+INSERT INTO signal_latest (entity_id, metric, signal_id, observed_at)
+SELECT entity_id, metric, id, observed_at FROM signals
+WHERE entity_id = ?1 AND metric = ?2 AND dedupe_key = ?3
+ON CONFLICT(entity_id, metric) DO UPDATE SET
+  signal_id = excluded.signal_id,
+  observed_at = excluded.observed_at
+WHERE excluded.observed_at > signal_latest.observed_at
+   OR (excluded.observed_at = signal_latest.observed_at AND excluded.signal_id >= signal_latest.signal_id)
+   OR excluded.signal_id = signal_latest.signal_id`;
+
 export async function upsertEntities(db: D1Database, entities: EntityUpsert[], now: number): Promise<void> {
   if (entities.length === 0) return;
   const stmt = db.prepare(ENTITY_UPSERT_SQL);
@@ -54,8 +69,10 @@ export async function insertSignals(db: D1Database, source: string, signals: Sig
     if (!s.dedupeKey) throw new Error(`signal ${s.entityId}/${s.metric}: dedupeKey is required`);
   }
   const stmt = db.prepare(SIGNAL_INSERT_SQL);
-  await db.batch(
-    signals.map((s) =>
+  const refresh = db.prepare(LATEST_REFRESH_SQL);
+  // One batch = one transaction: rows and their latest pointers land together.
+  await db.batch([
+    ...signals.map((s) =>
       stmt.bind(
         s.entityId,
         source,
@@ -70,5 +87,6 @@ export async function insertSignals(db: D1Database, source: string, signals: Sig
         s.dedupeKey,
       ),
     ),
-  );
+    ...signals.map((s) => refresh.bind(s.entityId, s.metric, s.dedupeKey)),
+  ]);
 }

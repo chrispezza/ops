@@ -1,5 +1,7 @@
 // The only module that knows the two metric semantics (spec §2.2):
 // state metrics → latest signal per (entity, metric); interval metrics → sums over period windows.
+// "Latest" reads go through signal_latest (ADR-005), a pointer table kept in
+// step with every write in store.ts — never a window scan over all signals.
 
 export interface SignalRow {
   id: number;
@@ -19,11 +21,9 @@ export interface SignalRow {
 export async function latestSignals(db: D1Database, entityId: string): Promise<SignalRow[]> {
   const res = await db
     .prepare(
-      `SELECT * FROM (
-         SELECT *, ROW_NUMBER() OVER (PARTITION BY metric ORDER BY observed_at DESC, id DESC) AS rn
-         FROM signals WHERE entity_id = ?1
-       ) WHERE rn = 1
-       ORDER BY severity DESC, metric`,
+      `SELECT s.* FROM signal_latest l JOIN signals s ON s.id = l.signal_id
+       WHERE l.entity_id = ?1
+       ORDER BY s.severity DESC, s.metric`,
     )
     .bind(entityId)
     .all<SignalRow>();
@@ -50,10 +50,8 @@ export async function entitiesWithLatest(db: D1Database): Promise<EntityView[]> 
               s.id AS sig_id, s.source, s.metric, s.value_num, s.value_text, s.severity,
               s.url, s.observed_at, s.period_start, s.period_end, s.dedupe_key
        FROM entities e
-       LEFT JOIN (
-         SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id, metric ORDER BY observed_at DESC, id DESC) AS rn
-         FROM signals
-       ) s ON s.entity_id = e.id AND s.rn = 1
+       LEFT JOIN signal_latest l ON l.entity_id = e.id
+       LEFT JOIN signals s ON s.id = l.signal_id
        WHERE e.archived = 0 AND e.kind NOT IN ('poller', 'budget')
        ORDER BY e.name`,
     )
@@ -123,10 +121,8 @@ export async function archivedEntities(db: D1Database): Promise<ArchivedEntity[]
 export async function latestByMetric(db: D1Database, metric: string): Promise<Map<string, SignalRow>> {
   const res = await db
     .prepare(
-      `SELECT * FROM (
-         SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY observed_at DESC, id DESC) AS rn
-         FROM signals WHERE metric = ?1
-       ) WHERE rn = 1`,
+      `SELECT s.* FROM signal_latest l JOIN signals s ON s.id = l.signal_id
+       WHERE l.metric = ?1`,
     )
     .bind(metric)
     .all<SignalRow>();
@@ -146,20 +142,29 @@ export interface PollerHealth {
 
 // One row per poller: latest status signal + latest successful one (ux §2.6).
 export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
-  const latest = (filter: string) => `
-    SELECT * FROM (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY observed_at DESC, id DESC) AS rn
-      FROM signals WHERE metric = 'poller.status' ${filter}
-    ) WHERE rn = 1`;
   // "Success" is the run summary's ok flag, not severity 0: a run that
   // succeeded with coverage notes is recorded at severity 1 (calm) and still
   // counts as fresh data — otherwise the freshness chip would age forever
   // while the poller was in fact working. Unconfigured runs are ok:false.
   const ok = (col: string) => `json_extract(${col}, '$.ok') = 1`;
+  // Last ok run is a filtered latest, which the pointer table can't answer;
+  // it and the onset query walk poller.status history via idx_signals_metric.
   const [entities, lastRuns, lastOks, onsets] = await Promise.all([
     db.prepare("SELECT id, name FROM entities WHERE kind = 'poller' ORDER BY id").all<{ id: string; name: string }>(),
-    db.prepare(latest("")).all<SignalRow>(),
-    db.prepare(latest(`AND ${ok("value_text")}`)).all<SignalRow>(),
+    db
+      .prepare(
+        `SELECT s.* FROM signal_latest l JOIN signals s ON s.id = l.signal_id
+         WHERE l.metric = 'poller.status'`,
+      )
+      .all<SignalRow>(),
+    db
+      .prepare(
+        `SELECT * FROM (
+           SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY observed_at DESC, id DESC) AS rn
+           FROM signals WHERE metric = 'poller.status' AND ${ok("value_text")}
+         ) WHERE rn = 1`,
+      )
+      .all<SignalRow>(),
     db
       .prepare(
         `SELECT s.entity_id, MIN(s.observed_at) AS onset FROM signals s
@@ -290,12 +295,10 @@ export async function findings(
   const res = await db
     .prepare(
       `SELECT s.*, e.name AS entity_name, e.category AS entity_category, e.archived AS entity_archived
-       FROM (
-         SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id, metric ORDER BY observed_at DESC, id DESC) AS rn
-         FROM signals
-       ) s
+       FROM signal_latest l
+       JOIN signals s ON s.id = l.signal_id
        JOIN entities e ON e.id = s.entity_id
-       WHERE s.rn = 1 AND ${conditions.join(" AND ")}
+       WHERE ${conditions.join(" AND ")}
        ORDER BY ${orderBy}`,
     )
     .bind(...params)
