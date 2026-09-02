@@ -40,7 +40,11 @@ Local seeding: `wrangler d1 migrations apply ops --local`, put
   (summed over `period`) in the poller's `metricSemantics`. Idempotency comes
   from `UNIQUE(entity_id, metric, dedupe_key)`; `dedupe_key` is NOT NULL on
   purpose. Retention compaction in `src/core/retention.ts` is the one
-  sanctioned deleter.
+  sanctioned deleter. "Latest per (entity, metric)" resolves through the
+  `signal_latest` pointer table ([ADR-005](docs/adr/005-signal-latest-pointer.md)),
+  which `insertSignals` maintains in the same batch as the rows — so every
+  signal write goes through `insertSignals`; raw `INSERT INTO signals` is out
+  of bounds.
 - **Pollers are a static array** ([ADR-003](docs/adr/003-static-poller-array.md)).
   Add a poller as one file in `src/pollers/` plus one line in
   `src/pollers/index.ts`. No registry, no dynamic import.
