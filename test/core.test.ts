@@ -2,12 +2,14 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EXPECTED_METRICS } from "../src/config";
 import { emitHygieneSignals } from "../src/core/derive";
-import { intervalSums, latestSignals } from "../src/core/queries";
+import { entitiesWithLatest, findings, intervalSums, latestByMetric, latestSignals } from "../src/core/queries";
 import { runPollers } from "../src/core/runner";
 import { insertSignals, upsertEntities } from "../src/core/store";
 import type { Poller, PollerResult } from "../src/pollers/types";
+import type { D1Migration } from "cloudflare:test";
 
 const NOW = 1_754_400_000;
+const DAY_S = 86_400;
 
 function fakePoller(id: string, result: PollerResult | (() => PollerResult)): Poller {
   return {
@@ -248,5 +250,90 @@ describe("archived upsert semantics", () => {
     await upsertEntities(env.DB, [{ id: "repo:a/kept", kind: "repo", name: "kept" }], NOW2 + 60);
     const kept = await env.DB.prepare("SELECT archived FROM entities WHERE id = 'repo:a/kept'").first<{ archived: number }>();
     expect(kept?.archived).toBe(1);
+  });
+});
+
+// ADR-005: latest-per-(entity, metric) resolves through the signal_latest
+// pointer table, kept in step with every write — never a window scan.
+describe("signal_latest pointer (ADR-005)", () => {
+  const repo = { id: "repo:a/x", kind: "repo", category: "web_app", name: "x" };
+  const sig = (observedAt: number, valueNum: number, dedupeKey = String(observedAt)) => ({
+    entityId: repo.id,
+    metric: "issues.open",
+    valueNum,
+    observedAt,
+    dedupeKey,
+  });
+
+  async function pointerRows(): Promise<{ entity_id: string; metric: string; signal_id: number }[]> {
+    const res = await env.DB.prepare("SELECT entity_id, metric, signal_id FROM signal_latest ORDER BY entity_id, metric").all<{
+      entity_id: string;
+      metric: string;
+      signal_id: number;
+    }>();
+    return res.results;
+  }
+
+  it("resolves to the newest observation even when history arrives out of order", async () => {
+    await upsertEntities(env.DB, [repo], NOW);
+    await insertSignals(env.DB, "github", [sig(NOW, 9)]);
+    await insertSignals(env.DB, "github", [sig(NOW - 3600, 8), sig(NOW - 7200, 7)]); // older rows land later
+
+    const latest = (await latestSignals(env.DB, repo.id)).find((s) => s.metric === "issues.open");
+    expect(latest?.value_num).toBe(9);
+    expect((await latestByMetric(env.DB, "issues.open")).get(repo.id)?.value_num).toBe(9);
+    expect((await entitiesWithLatest(env.DB)).find((e) => e.id === repo.id)?.latest["issues.open"]?.value_num).toBe(9);
+    expect(await pointerRows()).toHaveLength(1);
+    expect(await count("signals")).toBe(3);
+  });
+
+  it("advances with an in-place upsert of a fixed-dedupe row", async () => {
+    await upsertEntities(env.DB, [repo], NOW);
+    await insertSignals(env.DB, "core", [sig(NOW - DAY_S, 1, "fixed")]);
+    await insertSignals(env.DB, "core", [sig(NOW, 2, "fixed")]);
+
+    expect(await count("signals")).toBe(1); // same row, moved forward
+    const [ptr] = await env.DB.prepare("SELECT observed_at FROM signal_latest").all<{ observed_at: number }>().then((r) => r.results);
+    expect(ptr?.observed_at).toBe(NOW);
+    expect((await latestSignals(env.DB, repo.id))[0]?.value_num).toBe(2);
+  });
+
+  it("feeds findings from the pointer and breaks severity ties by magnitude", async () => {
+    await upsertEntities(env.DB, [repo, { id: "repo:a/y", kind: "repo", category: "web_app", name: "y" }], NOW);
+    await insertSignals(env.DB, "github", [
+      { entityId: repo.id, metric: "deps.vuln_count", valueNum: 54, severity: 3, observedAt: NOW - 60, dedupeKey: "old" },
+      { entityId: repo.id, metric: "deps.vuln_count", valueNum: 2, severity: 3, observedAt: NOW, dedupeKey: "new" },
+      { entityId: "repo:a/y", metric: "deps.vuln_count", valueNum: 10, severity: 3, observedAt: NOW, dedupeKey: "new" },
+    ]);
+    const rows = await findings(env.DB, { minSeverity: 2 });
+    // one row per (entity, metric) — the latest — and 10 sorts above 2
+    expect(rows.map((r) => [r.entity_id, r.value_num])).toEqual([
+      ["repo:a/y", 10],
+      [repo.id, 2],
+    ]);
+  });
+
+  it("is reproducible from history by the migration's backfill statement", async () => {
+    await upsertEntities(env.DB, [repo], NOW);
+    await insertSignals(env.DB, "github", [sig(NOW - 7200, 7), sig(NOW, 9), sig(NOW - 3600, 8)]);
+    await insertSignals(env.DB, "github", [{ entityId: repo.id, metric: "ci.status", valueText: "passing", observedAt: NOW, dedupeKey: "run-1" }]);
+    const before = await pointerRows();
+
+    const migrations = (env as unknown as { TEST_MIGRATIONS: D1Migration[] }).TEST_MIGRATIONS;
+    const backfill = migrations
+      .flatMap((m) => m.queries)
+      .find((q) => q.includes("INSERT INTO signal_latest"));
+    expect(backfill).toBeDefined();
+    await env.DB.prepare("DELETE FROM signal_latest").run();
+    await env.DB.prepare(backfill!).run();
+
+    expect(await pointerRows()).toEqual(before);
+  });
+
+  it("clears pointers when their signals are deleted", async () => {
+    await upsertEntities(env.DB, [repo], NOW);
+    await insertSignals(env.DB, "github", [sig(NOW, 9)]);
+    await env.DB.prepare("DELETE FROM signals").run();
+    expect(await pointerRows()).toHaveLength(0);
   });
 });

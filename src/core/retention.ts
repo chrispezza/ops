@@ -1,7 +1,8 @@
-// Issue #4: hourly-bucketed state metrics add ~2k rows/day; latest-per-metric
-// window scans grow with every one. Once observations are older than the
-// retention window, keep the newest row per (entity, metric, UTC day) and drop
-// the rest. Interval metrics (spend/usage) are untouched — they're already
+// Issue #4: hourly-bucketed state metrics add ~2k rows/day. Once observations
+// are older than the retention window, keep the newest row per (entity,
+// metric, UTC day) and drop the rest. The overall newest row per (entity,
+// metric) is by definition the newest of its day, so signal_latest (ADR-005)
+// never loses a pointer here. Interval metrics (spend/usage) are untouched — they're already
 // daily — and fixed-dedupe rows (hygiene, budget, balance) only ever have one
 // row, so the sweep is a no-op for them by construction.
 const RETENTION_DAYS = 30;

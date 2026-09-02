@@ -51,6 +51,27 @@ describe("signal compaction (issue #4)", () => {
     expect(issueValues).toEqual([5, 8, 9]); // newest-of-old-day survives; recent rows untouched
     expect(rows.results.some((r) => r.metric === "spend.usd")).toBe(true);
   });
+
+  it("leaves the signal_latest pointer on the surviving newest row (ADR-005)", async () => {
+    await upsertEntities(env.DB, [{ id: "repo:a/x", kind: "repo", name: "x" }], NOW);
+    const oldDay = NOW - 40 * DAY - ((NOW - 40 * DAY) % DAY);
+    await insertSignals(
+      env.DB,
+      "github",
+      [0, 1, 2].map((h) => ({
+        entityId: "repo:a/x",
+        metric: "issues.open",
+        valueNum: h,
+        observedAt: oldDay + h * 3600,
+        dedupeKey: String(oldDay + h * 3600),
+      })),
+    );
+    expect(await compactSignals(env.DB, NOW)).toBe(2);
+    const ptr = await env.DB.prepare(
+      "SELECT s.value_num FROM signal_latest l JOIN signals s ON s.id = l.signal_id WHERE l.entity_id = 'repo:a/x'",
+    ).first<{ value_num: number }>();
+    expect(ptr?.value_num).toBe(2);
+  });
 });
 
 describe("kind-scoped budget bars (issue #7)", () => {
