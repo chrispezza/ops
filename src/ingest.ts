@@ -14,7 +14,7 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 // (timingSafeEqual throws on a length mismatch) and compare those.
 const MAX_BODY_BYTES = 1_000_000;
 
-async function tokenMatches(presented: string | undefined, expected: string): Promise<boolean> {
+export async function tokenMatches(presented: string | undefined, expected: string): Promise<boolean> {
   if (!presented) return false;
   const digest = async (s: string) => await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   const [a, b] = await Promise.all([digest(presented), digest(`Bearer ${expected}`)]);

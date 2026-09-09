@@ -16,9 +16,11 @@
 	],
 	"triggers": {
 		// Hourly pollers (github) + daily pollers (anthropic_usage) at ~06:00 ET (10:00 UTC)
+		// + the weekly digest push, Fridays ~08:00 ET (12:00 UTC); it runs no pollers.
 		"crons": [
 			"0 * * * *",
-			"0 10 * * *"
+			"0 10 * * *",
+			"0 12 * * 5"
 		]
 	},
 	// Deployment specifics live here, never in code (ADR-004). Forking this repo
