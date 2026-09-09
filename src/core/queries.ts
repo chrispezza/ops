@@ -372,3 +372,128 @@ export async function intervalSums(
     .all<{ period_start: number; total: number }>();
   return res.results;
 }
+
+// ---- Digest: the time lens (what changed in a window) ----------------------
+// Same rows as /findings, read along the time axis instead of the severity
+// axis. Signals are append-only (ADR-002) so the pre-window state of a metric
+// is the newest row observed before the window start.
+
+export interface DigestChangeRow extends SignalRow {
+  entity_name: string;
+  entity_kind: string;
+  baseline_severity: number | null; // newest row before the window; null = no such row
+}
+
+// Insertion watermark for a window start. Signal ids are AUTOINCREMENT and
+// poller.status rows are appended every run (dedupe on the run time), so the
+// highest poller.status id observed before `since` sits above every pre-window
+// insert. Fixed-dedupe rows (hygiene.*, balance.usd, per-tag release.age_days)
+// are overwritten in place — observed_at moves, id does not — so with no
+// baseline row this is the one way to tell "existed before the window, prior
+// severity unknowable" (id ≤ watermark) from "genuinely new" (id > watermark).
+export async function insertWatermark(db: D1Database, since: number): Promise<number> {
+  const row = await db
+    .prepare("SELECT MAX(id) AS id FROM signals WHERE metric = 'poller.status' AND observed_at < ?1")
+    .bind(since)
+    .first<{ id: number | null }>();
+  return row?.id ?? 0;
+}
+
+// Every current finding (latest severity ≥ 2) with the severity it had at the
+// window start. Pollers are excluded as on /triage — Ops's own health is
+// /health's story, not the portfolio's.
+export async function currentFindingsWithBaseline(db: D1Database, since: number): Promise<DigestChangeRow[]> {
+  const res = await db
+    .prepare(
+      `SELECT s.*, e.name AS entity_name, e.kind AS entity_kind,
+              (SELECT b.severity FROM signals b
+               WHERE b.entity_id = s.entity_id AND b.metric = s.metric AND b.observed_at < ?1
+               ORDER BY b.observed_at DESC, b.id DESC LIMIT 1) AS baseline_severity
+       FROM signal_latest l
+       JOIN signals s ON s.id = l.signal_id
+       JOIN entities e ON e.id = s.entity_id
+       WHERE s.severity >= 2 AND e.archived = 0 AND e.kind != 'poller'
+       ORDER BY s.severity DESC, e.name, s.metric`,
+    )
+    .bind(since)
+    .all<DigestChangeRow>();
+  return res.results;
+}
+
+export interface DigestResolvedRow extends SignalRow {
+  entity_name: string;
+  entity_kind: string;
+  peak: number; // highest severity observed in the window
+}
+
+// Findings that were at severity ≥ 2 at some point in the window and are below
+// it now. Candidates come from the window's own rows (idx_signals_severity), so
+// an in-place row that was overwritten to 0 leaves no trace here — hygiene
+// resolutions are not tracked, by construction.
+export async function resolvedInWindow(db: D1Database, since: number): Promise<DigestResolvedRow[]> {
+  const res = await db
+    .prepare(
+      `WITH peaked AS (
+         SELECT entity_id, metric, MAX(severity) AS peak FROM signals
+         WHERE severity >= 2 AND observed_at >= ?1
+         GROUP BY entity_id, metric
+       )
+       SELECT s.*, e.name AS entity_name, e.kind AS entity_kind, p.peak
+       FROM peaked p
+       JOIN signal_latest l ON l.entity_id = p.entity_id AND l.metric = p.metric
+       JOIN signals s ON s.id = l.signal_id
+       JOIN entities e ON e.id = p.entity_id
+       WHERE s.severity < 2 AND e.archived = 0 AND e.kind != 'poller'
+       ORDER BY p.peak DESC, e.name, s.metric`,
+    )
+    .bind(since)
+    .all<DigestResolvedRow>();
+  return res.results;
+}
+
+export async function entitiesSince(db: D1Database, since: number): Promise<ArchivedEntity[]> {
+  const res = await db
+    .prepare(
+      `SELECT id, name, kind, category, owner FROM entities
+       WHERE first_seen_at >= ?1 AND archived = 0 AND kind NOT IN ('poller', 'budget')
+       ORDER BY first_seen_at DESC, name`,
+    )
+    .bind(since)
+    .all<ArchivedEntity>();
+  return res.results;
+}
+
+// Spend in the window versus the window before it, same length.
+export async function spendWindows(db: D1Database, since: number, windowSeconds: number): Promise<{ current: number; prior: number }> {
+  const row = await db
+    .prepare(
+      `SELECT SUM(CASE WHEN period_start >= ?1 THEN value_num ELSE 0 END) AS current,
+              SUM(CASE WHEN period_start < ?1 THEN value_num ELSE 0 END) AS prior
+       FROM signals WHERE metric = 'spend.usd' AND period_start >= ?2`,
+    )
+    .bind(since, since - windowSeconds)
+    .first<{ current: number | null; prior: number | null }>();
+  return { current: row?.current ?? 0, prior: row?.prior ?? 0 };
+}
+
+// Latest value of each metric summed across active entities — a current-state
+// strip, not a delta.
+export async function latestTotals(
+  db: D1Database,
+  metrics: readonly string[],
+): Promise<{ metric: string; total: number; entities: number }[]> {
+  if (metrics.length === 0) return [];
+  const placeholders = metrics.map((_, i) => `?${i + 1}`).join(", ");
+  const res = await db
+    .prepare(
+      `SELECT l.metric, SUM(s.value_num) AS total, COUNT(*) AS entities
+       FROM signal_latest l
+       JOIN signals s ON s.id = l.signal_id
+       JOIN entities e ON e.id = l.entity_id
+       WHERE e.archived = 0 AND l.metric IN (${placeholders})
+       GROUP BY l.metric`,
+    )
+    .bind(...metrics)
+    .all<{ metric: string; total: number; entities: number }>();
+  return res.results;
+}

@@ -11,6 +11,7 @@ import {
   emitHygieneSignals,
   evaluateBudgets,
 } from "./core/derive";
+import { buildDigest, notifyDigest, parseSinceDays, renderDigestMarkdown } from "./core/digest";
 import { notifyNewAlerts } from "./core/notify";
 import { compactSignals } from "./core/retention";
 import {
@@ -33,32 +34,41 @@ import {
 } from "./core/queries";
 import { runPollers } from "./core/runner";
 import { activityAt, computeScore, hasUsageSemantics } from "./core/score";
-import { handleIngest } from "./ingest";
+import { handleIngest, tokenMatches } from "./ingest";
 import { FreshnessChip, Layout } from "./ui/layout";
 import { FindingsPage } from "./ui/pages/findings";
 import { EntityPage, HISTORY_PAGE, HistoryRows } from "./ui/pages/entity";
 import { HealthPage } from "./ui/pages/health";
 import { MapPage } from "./ui/pages/map";
+import { DigestPage } from "./ui/pages/digest";
 import { SettingsPage, type SettingsDraft } from "./ui/pages/settings";
 import { type SpendEntity, SpendPage } from "./ui/pages/spend";
 import { TriagePage, type TriageRow } from "./ui/pages/triage";
 
 // Spec §5: hourly cron runs hourly pollers, daily cron (~06:00 ET) runs daily.
+// The weekly cron (Friday ~08:00 ET) runs no pollers — it pushes the 7d digest.
 const DAILY_CRON = "0 10 * * *";
+const WEEKLY_CRON = "0 12 * * 5";
+
+// Machine endpoints authenticate with their own bearer token (constant-time
+// compare in ingest.ts) instead of a browser login: CI pushes to /ingest and an
+// agent pulls /digest.md, and neither can complete an Access flow. Both are
+// exempt from the assertion check and nothing else is.
+const MACHINE_ROUTES = new Set(["/ingest", "/digest.md"]);
 const DAY = 86_400;
 
 const app = new Hono<{ Bindings: Env }>();
 
 // Verify the Access assertion before anything else — authentication precedes
 // the CSRF gate below. Dormant unless both vars are set, so an unconfigured
-// deployment is unchanged; configured, every route fails closed except /ingest,
-// which authenticates itself with a bearer token because CI reaches it through
-// a service token or a bypass policy rather than a browser login.
+// deployment is unchanged; configured, every route fails closed except the
+// MACHINE_ROUTES, which authenticate themselves with a bearer token because
+// they are reached through a service token or a bypass policy, not a login.
 app.use("*", async (c, next) => {
   const teamDomain = c.env.ACCESS_TEAM_DOMAIN;
   const aud = c.env.ACCESS_AUD;
   if (!teamDomain || !aud) return next();
-  if (new URL(c.req.url).pathname === "/ingest") return next();
+  if (MACHINE_ROUTES.has(new URL(c.req.url).pathname)) return next();
 
   const assertion = c.req.header("cf-access-jwt-assertion") ?? getCookie(c, "CF_Authorization");
   const result = await verifyAccessJwt(assertion, teamDomain, aud);
@@ -313,6 +323,34 @@ app.get("/findings", async (c) => {
 
 app.post("/ingest", handleIngest);
 
+// The time lens: what changed in the window (spec §4.4 applied to time).
+app.get("/digest", async (c) => {
+  const now = epochNow();
+  const days = parseSinceDays(c.req.query("since"));
+  const [digest, health] = await Promise.all([buildDigest(c.env.DB, days, now), pollerHealth(c.env.DB)]);
+  return c.html(
+    <Layout path="/digest" title="Digest" health={health} now={now}>
+      <DigestPage digest={digest} hasToken={!!c.env.DIGEST_TOKEN} now={now} />
+    </Layout>,
+  );
+});
+
+// Same digest as markdown for an agent to narrate — the facts half of a weekly
+// report; judgment stays with the reader (ADR-001). Read-only, but it is the
+// whole portfolio's state in one response, so it carries its own token, the
+// same SHA-256-then-timingSafeEqual compare as /ingest, and no caching.
+app.get("/digest.md", async (c) => {
+  const token = c.env.DIGEST_TOKEN;
+  if (!token) return c.text("digest disabled: DIGEST_TOKEN not configured", 503);
+  if (!(await tokenMatches(c.req.header("authorization"), token))) return c.text("unauthorized", 401);
+  const now = epochNow();
+  const digest = await buildDigest(c.env.DB, parseSinceDays(c.req.query("since")), now);
+  return c.text(renderDigestMarkdown(digest, c.env.OPS_URL), 200, {
+    "content-type": "text/markdown; charset=utf-8",
+    "cache-control": "no-store",
+  });
+});
+
 app.get("/spend", async (c) => {
   const now = epochNow();
   const monthStart = Math.floor(
@@ -545,6 +583,10 @@ export default {
   fetch: app.fetch,
   async scheduled(event, env, _ctx) {
     const now = epochNow();
+    if (event.cron === WEEKLY_CRON) {
+      await notifyDigest(env.DB, env, now);
+      return;
+    }
     const isDaily = event.cron === DAILY_CRON;
     await runPollers(env, isDaily ? "daily" : "hourly", { now });
     await derivePass(env, now);

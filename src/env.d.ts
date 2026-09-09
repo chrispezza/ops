@@ -7,6 +7,7 @@ interface Env {
   X_BEARER_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
   INGEST_TOKEN?: string;
+  DIGEST_TOKEN?: string;
   NTFY_URL?: string;
   NTFY_TOKEN?: string;
 }
@@ -19,6 +20,7 @@ declare namespace Cloudflare {
     X_BEARER_TOKEN?: string;
     CLOUDFLARE_API_TOKEN?: string;
     INGEST_TOKEN?: string;
+    DIGEST_TOKEN?: string;
     NTFY_URL?: string;
     NTFY_TOKEN?: string;
   }

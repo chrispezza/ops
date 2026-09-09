@@ -83,9 +83,11 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 
 - Every state-mutating `POST` requires an `Origin` header matching the
   deployment (same-origin gate in `src/index.tsx`). Do not exempt new routes.
-- `POST /ingest` is the one exemption and is gated by a bearer token compared
-  in constant time (`src/ingest.ts`). Keep the SHA-256-then-timingSafeEqual
-  pattern; do not compare token strings directly.
+- `POST /ingest` and `GET /digest.md` are the only Access exemptions
+  (`MACHINE_ROUTES` in `src/index.tsx`), each gated by its own bearer token
+  compared in constant time via `tokenMatches` in `src/ingest.ts`. Keep the
+  SHA-256-then-timingSafeEqual pattern; do not compare token strings directly.
+  Do not add a third machine route without a reason of the same shape.
 - Access assertion verification (`src/core/access.ts`) pins RS256 and checks
   `aud`, `iss` and expiry. Do not loosen the algorithm allow-list.
 - Validate all `/ingest` and form input at the boundary; unknown fields are
@@ -124,7 +126,7 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 - Conventional commits, `type(scope): description`. Scope is the poller,
   page or subsystem touched: `ui`, `ux`, `github`, `findings`, `triage`,
   `spend`, `uptime`, `score`, `health`, `security`, `access`, `ingest`,
-  `prompt`, `core`, `maintenance`, `manifests`, `vendors`, `entity`.
+  `prompt`, `digest`, `core`, `maintenance`, `manifests`, `vendors`, `entity`.
 - Branch from `main` as `type/short-slug`; open a PR; never push to `main`.
   CI must be green before merge. Do not bypass hooks with `--no-verify`.
 - Deploys are manual (`wrangler deploy` from `main`), never from a branch.
