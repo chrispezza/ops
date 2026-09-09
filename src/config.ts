@@ -41,6 +41,7 @@ export const METRIC_LABELS: Record<string, string> = {
   "issues.idle_90d": "idle issues 90d+",
   "issues.new_7d": "new issues 7d",
   "issues.oldest_days": "oldest issue",
+  "issues.flagged": "flagged issues",
   "repo.pushed_at": "last push",
   "repo.branches": "branches",
   "release.age_days": "release age",

@@ -13,6 +13,20 @@ const TOPIC_CATEGORY: Record<string, string> = {
   client: "client_project",
 };
 
+// Spec §2.4 again: tiering lives in the system of record — GitHub labels.
+// Label a P0 once and it surfaces within the hour; close it and it drops off.
+// Matched case-insensitively; unknown labels carry no severity. Ops never
+// writes labels (ADR-001) — the weekly agent pass is where unlabeled issues
+// get read and labeled.
+const LABEL_SEVERITY: Record<string, 1 | 2 | 3> = {
+  security: 3,
+  p0: 3,
+  critical: 3,
+  bug: 2,
+  p1: 2,
+  p2: 1,
+};
+
 // Issue and PR nodes are capped per repo; a repo past the cap is reported in
 // notes (poller contract: no silent caps). Issues come idlest-first so the
 // idle count is exact up to the cap; PRs oldest-first for the same reason.
@@ -43,7 +57,7 @@ const QUERY = /* GraphQL */ `
           repositoryTopics(first: 20) { nodes { topic { name } } }
           issues(states: OPEN, first: ${ISSUE_PAGE}, orderBy: { field: UPDATED_AT, direction: ASC }) {
             totalCount
-            nodes { number createdAt updatedAt }
+            nodes { number title createdAt updatedAt labels(first: 10) { nodes { name } } }
           }
           refs(refPrefix: "refs/heads/") { totalCount }
           vulnerabilityAlerts(states: OPEN, first: 50) {
@@ -78,8 +92,10 @@ const QUERY = /* GraphQL */ `
 
 interface IssueNode {
   number: number;
+  title: string;
   createdAt: string;
   updatedAt: string;
+  labels?: { nodes: { name: string }[] };
 }
 
 interface PullRequestNode {
@@ -219,6 +235,7 @@ export const github: Poller = {
     "issues.idle_90d": "state",
     "issues.new_7d": "state",
     "issues.oldest_days": "state",
+    "issues.flagged": "state",
     "repo.branches": "state",
     "docs.score": "state",
     "release.age_days": "state",
@@ -355,6 +372,38 @@ export const github: Poller = {
           valueText: idle.length > 0 ? idle.map((i) => `#${i.number}`).join(" · ") : undefined,
           severity: idle.length >= 5 ? 2 : idle.length >= 1 ? 1 : 0,
           url: `${repo.url}/issues?q=${encodeURIComponent("is:issue is:open sort:updated-asc")}`,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
+        // Labeled tiering: severity is the worst label on any open issue, the
+        // text names the worst few so the finding reads without a click.
+        const flagged = issueNodes
+          .map((i) => {
+            const labels = (i.labels?.nodes ?? []).map((l) => l.name);
+            const graded = labels
+              .map((l) => ({ label: l, severity: LABEL_SEVERITY[l.toLowerCase()] }))
+              .filter((g): g is { label: string; severity: 1 | 2 | 3 } => g.severity !== undefined)
+              .sort((a, b) => b.severity - a.severity);
+            return graded[0] ? { number: i.number, title: i.title, ...graded[0] } : null;
+          })
+          .filter((f): f is NonNullable<typeof f> => f !== null)
+          .sort((a, b) => b.severity - a.severity || a.number - b.number);
+        const worstFlag = flagged[0];
+        signals.push({
+          entityId: id,
+          metric: "issues.flagged",
+          valueNum: flagged.length,
+          valueText:
+            flagged.length > 0
+              ? flagged
+                  .slice(0, 5)
+                  .map((f) => `#${f.number} ${f.title.length > 60 ? `${f.title.slice(0, 57)}…` : f.title} (${f.label})`)
+                  .join(" · ")
+              : undefined,
+          severity: worstFlag?.severity ?? 0,
+          url: worstFlag
+            ? `${repo.url}/issues?q=${encodeURIComponent(`is:issue is:open label:${worstFlag.label}`)}`
+            : `${repo.url}/issues`,
           observedAt: now,
           dedupeKey: hourBucket,
         });

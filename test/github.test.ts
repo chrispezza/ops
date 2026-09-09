@@ -244,6 +244,50 @@ describe("github poller", () => {
     ]);
   });
 
+  it("tiers labeled issues by the worst label and resolves to zero when none are labeled", async () => {
+    const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const issue = (number: number, title: string, labels: string[]) => ({
+      number,
+      title,
+      createdAt: daysAgo(5),
+      updatedAt: daysAgo(1),
+      labels: { nodes: labels.map((name) => ({ name })) },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/eat-local",
+            url: "https://github.com/clownware/eat-local",
+            issues: {
+              totalCount: 4,
+              nodes: [
+                issue(10, "prod hydration failure on the menu page", ["bug"]),
+                issue(51, "plaintext Kit API key committed in .env — rotate and purge history before launch", ["Security", "enhancement"]),
+                issue(52, "nice to have: dark mode", ["enhancement"]),
+                issue(53, "polish copy", ["P2"]),
+              ],
+            },
+          }),
+          repoNode({ nameWithOwner: "clownware/unlabeled", issues: { totalCount: 1, nodes: [issue(1, "untriaged", [])] } }),
+        ]),
+      ),
+    );
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const sig = (id: string, metric: string) => result.signals.find((s) => s.entityId === id && s.metric === metric);
+
+    const flagged = sig("repo:clownware/eat-local", "issues.flagged");
+    expect(flagged?.valueNum).toBe(3); // enhancement alone carries no severity
+    expect(flagged?.severity).toBe(3); // Security, case-insensitively
+    expect(flagged?.valueText).toBe(
+      "#51 plaintext Kit API key committed in .env — rotate and purg… (Security) · #10 prod hydration failure on the menu page (bug) · #53 polish copy (P2)",
+    );
+    expect(flagged?.url).toContain("label%3ASecurity");
+
+    expect(sig("repo:clownware/unlabeled", "issues.flagged")).toMatchObject({ valueNum: 0, severity: 0 });
+  });
+
   it("emits release age, CI duration, and fail streak when the wider grants respond", async () => {
     const TEN_DAYS_AGO = new Date(Date.now() - 10 * 86_400_000).toISOString();
     const run = (id: number, conclusion: string) => ({

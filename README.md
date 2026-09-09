@@ -87,7 +87,7 @@ as separate truth.
 
 | Poller | Schedule | Needs | Reports |
 |---|---|---|---|
-| `github` | hourly | `GITHUB_OWNERS`, `GITHUB_PAT` | CI status, Dependabot vulns, open PRs (human vs Dependabot, major bumps), issue backlog shape (new, idle, oldest), last push, releases, branches |
+| `github` | hourly | `GITHUB_OWNERS`, `GITHUB_PAT` | CI status, Dependabot vulns, open PRs (human vs Dependabot, major bumps), issue backlog shape (new, idle, oldest, labeled), last push, releases, branches |
 | `uptime` | hourly | — (uses each repo's GitHub Website field) | `site.up`, `site.response_ms` |
 | `anthropic_usage` | daily | `ANTHROPIC_ADMIN_KEY` | token spend and usage |
 | `claude_code` | daily | `ANTHROPIC_ADMIN_KEY` | sessions, lines added, commits |
@@ -136,6 +136,11 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `DIGEST_TOKEN` | `GET /digest/md` — without it the endpoint returns 503 |
 | `NTFY_URL` | push notifications for new high-severity findings, and the Friday digest |
 | `NTFY_TOKEN` | auth for a protected ntfy topic |
+
+Issue tiering lives in GitHub labels, the way repo categories live in topics:
+`security`, `P0` and `critical` surface at high severity, `bug` and `P1` at
+medium, `P2` at low. Label an issue and it shows on `/findings` within the
+hour; close it and it drops off. Ops never writes labels.
 
 GitHub fine-grained PATs are scoped to a single resource owner. With multiple
 owners in `GITHUB_OWNERS`, set one secret per owner: `GITHUB_PAT_<OWNER>`
