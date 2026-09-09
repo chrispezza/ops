@@ -46,11 +46,34 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("2 open Dependabot vulnerability alert(s)");
     expect(prompt).toContain("3 open PR(s), oldest open 23d");
     expect(prompt).toContain("11 open issue(s)");
+    expect(prompt).not.toContain("Dependabot PR");
     expect(prompt).toContain("gh repo clone clownware/gittunes");
     // done-criteria mirror the signals the next poll re-checks
     expect(prompt).toContain("ci.status = success");
     expect(prompt).toContain("deps.vuln_count = 0");
     expect(prompt).toContain("every open PR has a decision");
+  });
+
+  it("splits Dependabot PRs from human ones and lists idle issues to decide on", () => {
+    const prompt = buildAgentPrompt(
+      repo,
+      [
+        sig("prs.open", 5, 0, null, "https://github.com/clownware/gittunes/pulls"),
+        sig("prs.dependabot_count", 4, 1, "oldest 35d", "https://github.com/clownware/gittunes/pulls?q=dependabot"),
+        sig("prs.dependabot_major", 1, 1, "#80 vitest 4→5"),
+        sig("prs.oldest_days", 16, 1),
+        sig("issues.open", 8, 0, null, "https://github.com/clownware/gittunes/issues"),
+        sig("issues.idle_90d", 2, 1, "#3 · #7", "https://github.com/clownware/gittunes/issues?q=idle"),
+        sig("issues.new_7d", 3, 0),
+      ],
+      NOW,
+    );
+    expect(prompt).toContain("1 open PR(s), oldest open 16d"); // 5 total minus 4 bot
+    expect(prompt).toContain("4 open Dependabot PR(s) (oldest 35d) — https://github.com/clownware/gittunes/pulls?q=dependabot — major bumps need a changelog read: #80 vitest 4→5");
+    expect(prompt).toContain("8 open issue(s) (3 opened in the last 7d, 2 untouched for 90d+)");
+    expect(prompt).toContain("idle issues to decide on: #3 · #7 — https://github.com/clownware/gittunes/issues?q=idle");
+    expect(prompt).toContain("prs.dependabot_count = 0");
+    expect(prompt).toContain("issues.idle_90d = 0");
   });
 
   it("returns null for healthy repos and non-repo entities", () => {
