@@ -13,6 +13,12 @@ const TOPIC_CATEGORY: Record<string, string> = {
   client: "client_project",
 };
 
+// Issue and PR nodes are capped per repo; a repo past the cap is reported in
+// notes (poller contract: no silent caps). Issues come idlest-first so the
+// idle count is exact up to the cap; PRs oldest-first for the same reason.
+const ISSUE_PAGE = 30;
+const PR_PAGE = 20;
+
 // 25 repos/page: GitHub 502s expensive GraphQL queries, and this one carries
 // vuln nodes + blob lookups + CI rollups per repo — smaller pages keep each
 // request under the cost ceiling.
@@ -35,7 +41,10 @@ const QUERY = /* GraphQL */ `
           claudeMd: object(expression: "HEAD:CLAUDE.md") { ... on Blob { byteSize } }
           primaryLanguage { name }
           repositoryTopics(first: 20) { nodes { topic { name } } }
-          issues(states: OPEN) { totalCount }
+          issues(states: OPEN, first: ${ISSUE_PAGE}, orderBy: { field: UPDATED_AT, direction: ASC }) {
+            totalCount
+            nodes { number createdAt updatedAt }
+          }
           refs(refPrefix: "refs/heads/") { totalCount }
           vulnerabilityAlerts(states: OPEN, first: 50) {
             totalCount
@@ -43,9 +52,9 @@ const QUERY = /* GraphQL */ `
               securityVulnerability { severity }
             }
           }
-          pullRequests(states: OPEN, first: 1, orderBy: { field: CREATED_AT, direction: ASC }) {
+          pullRequests(states: OPEN, first: ${PR_PAGE}, orderBy: { field: CREATED_AT, direction: ASC }) {
             totalCount
-            nodes { createdAt }
+            nodes { number title createdAt author { login } }
           }
           defaultBranchRef {
             name
@@ -67,6 +76,19 @@ const QUERY = /* GraphQL */ `
   }
 `;
 
+interface IssueNode {
+  number: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PullRequestNode {
+  number: number;
+  title: string;
+  createdAt: string;
+  author: { login: string } | null;
+}
+
 interface RepoNode {
   name: string;
   nameWithOwner: string;
@@ -81,9 +103,9 @@ interface RepoNode {
   claudeMd?: { byteSize: number } | null;
   primaryLanguage: { name: string } | null;
   repositoryTopics: { nodes: { topic: { name: string } }[] };
-  issues: { totalCount: number };
+  issues: { totalCount: number; nodes?: IssueNode[] };
   refs?: { totalCount: number } | null;
-  pullRequests: { totalCount: number; nodes?: { createdAt: string }[] };
+  pullRequests: { totalCount: number; nodes?: PullRequestNode[] };
   vulnerabilityAlerts: {
     totalCount: number;
     nodes?: { securityVulnerability: { severity: string } | null }[];
@@ -164,6 +186,23 @@ async function fetchRuns(pat: string, nameWithOwner: string, branch: string): Pr
   return body.workflow_runs ?? [];
 }
 
+// Dependabot's GraphQL author login is "dependabot" (REST shows "dependabot[bot]").
+const isDependabot = (pr: PullRequestNode): boolean => /^dependabot(\[bot\])?$/.test(pr.author?.login ?? "");
+
+// "bump X from A.y.z to B.y.z" with A ≠ B is a major bump. Grouped PRs
+// ("bump the dev-dependencies group with 11 updates") carry no versions and
+// are not assessed — Dependabot groups are configured minor/patch-only here.
+const MAJOR_BUMP = /bump (\S+) from v?(\d+)(?:\.[\w.-]*)? to v?(\d+)/i;
+export function majorBump(title: string): { name: string; from: number; to: number } | null {
+  const m = MAJOR_BUMP.exec(title);
+  if (!m) return null;
+  const from = Number(m[2]);
+  const to = Number(m[3]);
+  return from === to ? null : { name: m[1] ?? "", from, to };
+}
+
+const daysSince = (iso: string, now: number): number => Math.floor((now - Math.floor(Date.parse(iso) / 1000)) / 86_400);
+
 export const github: Poller = {
   id: "github",
   schedule: "hourly",
@@ -175,6 +214,11 @@ export const github: Poller = {
     "issues.open": "state",
     "prs.open": "state",
     "prs.oldest_days": "state",
+    "prs.dependabot_count": "state",
+    "prs.dependabot_major": "state",
+    "issues.idle_90d": "state",
+    "issues.new_7d": "state",
+    "issues.oldest_days": "state",
     "repo.branches": "state",
     "docs.score": "state",
     "release.age_days": "state",
@@ -196,6 +240,7 @@ export const github: Poller = {
     const hourBucket = String(now - (now % 3600));
     const entities: EntityUpsert[] = [];
     const signals: SignalInsert[] = [];
+    const notes: string[] = [];
 
     for (const owner of owners) {
       const pat = tokenFor(owner);
@@ -292,6 +337,44 @@ export const github: Poller = {
           observedAt: now,
           dedupeKey: hourBucket,
         });
+
+        // Backlog shape, not backlog size: a count says nothing about whether
+        // the issues are fresh intake or forgotten. Facts only — tiering by
+        // content is the agent's job (ADR-001). Every metric is emitted each
+        // run, including at zero, so a resolved state overwrites the finding
+        // instead of a stale severity-1 row staying "latest" forever.
+        const issueNodes = repo.issues.nodes ?? [];
+        if (repo.issues.totalCount > issueNodes.length && issueNodes.length >= ISSUE_PAGE) {
+          notes.push(`${repo.nameWithOwner}: inspected ${issueNodes.length} of ${repo.issues.totalCount} open issues`);
+        }
+        const idle = issueNodes.filter((i) => daysSince(i.updatedAt, now) >= 90);
+        signals.push({
+          entityId: id,
+          metric: "issues.idle_90d",
+          valueNum: idle.length,
+          valueText: idle.length > 0 ? idle.map((i) => `#${i.number}`).join(" · ") : undefined,
+          severity: idle.length >= 5 ? 2 : idle.length >= 1 ? 1 : 0,
+          url: `${repo.url}/issues?q=${encodeURIComponent("is:issue is:open sort:updated-asc")}`,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
+        const weekAgo = new Date((now - 7 * 86_400) * 1000).toISOString().slice(0, 10);
+        signals.push({
+          entityId: id,
+          metric: "issues.new_7d",
+          valueNum: issueNodes.filter((i) => daysSince(i.createdAt, now) < 7).length,
+          url: `${repo.url}/issues?q=${encodeURIComponent(`is:issue is:open created:>=${weekAgo}`)}`,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
+        signals.push({
+          entityId: id,
+          metric: "issues.oldest_days",
+          valueNum: issueNodes.reduce((max, i) => Math.max(max, daysSince(i.createdAt, now)), 0),
+          url: `${repo.url}/issues?q=${encodeURIComponent("is:issue is:open sort:created-asc")}`,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
         signals.push({
           entityId: id,
           metric: "prs.open",
@@ -335,21 +418,57 @@ export const github: Poller = {
           dedupeKey: hourBucket,
         });
 
-        // PRs rotting is the solo-maintainer failure mode: age of the oldest
-        // open PR, warning at 14d, medium at 30d.
-        const oldestPr = repo.pullRequests.nodes?.[0];
-        if (oldestPr) {
-          const prDays = Math.floor((now - Math.floor(Date.parse(oldestPr.createdAt) / 1000)) / 86_400);
-          signals.push({
-            entityId: id,
-            metric: "prs.oldest_days",
-            valueNum: prDays,
-            severity: prDays >= 30 ? 2 : prDays >= 14 ? 1 : 0,
-            url: `${repo.url}/pulls`,
-            observedAt: now,
-            dedupeKey: hourBucket,
-          });
+        // PRs rotting is the solo-maintainer failure mode — but 40 of 42 open
+        // PRs across the portfolio were Dependabot's, so the age metric was
+        // charging triage for bot rot. Human PRs keep the sharp thresholds
+        // (warning at 14d, medium at 30d); Dependabot PRs get their own calm
+        // count, escalating only when they sit for a month, plus a flag for
+        // major bumps since those need a human read, never an auto-merge.
+        // Nodes arrive oldest-first, so [0] of each partition is its oldest.
+        const prNodes = repo.pullRequests.nodes ?? [];
+        if (repo.pullRequests.totalCount > prNodes.length && prNodes.length >= PR_PAGE) {
+          notes.push(`${repo.nameWithOwner}: inspected ${prNodes.length} of ${repo.pullRequests.totalCount} open PRs`);
         }
+        const botPrs = prNodes.filter(isDependabot);
+        const humanPrs = prNodes.filter((pr) => !isDependabot(pr));
+        const oldestHuman = humanPrs[0];
+        const humanDays = oldestHuman ? daysSince(oldestHuman.createdAt, now) : 0;
+        signals.push({
+          entityId: id,
+          metric: "prs.oldest_days",
+          valueNum: humanDays,
+          severity: humanDays >= 30 ? 2 : humanDays >= 14 ? 1 : 0,
+          url: `${repo.url}/pulls?q=${encodeURIComponent("is:pr is:open -author:app/dependabot sort:created-asc")}`,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
+        const oldestBot = botPrs[0];
+        const botDays = oldestBot ? daysSince(oldestBot.createdAt, now) : 0;
+        const dependabotUrl = `${repo.url}/pulls?q=${encodeURIComponent("is:pr is:open author:app/dependabot sort:created-asc")}`;
+        signals.push({
+          entityId: id,
+          metric: "prs.dependabot_count",
+          valueNum: botPrs.length,
+          valueText: oldestBot ? `oldest ${botDays}d` : undefined,
+          severity: botDays >= 30 ? 1 : 0,
+          url: dependabotUrl,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
+        const majors = botPrs.flatMap((pr) => {
+          const bump = majorBump(pr.title);
+          return bump ? [`#${pr.number} ${bump.name} ${bump.from}→${bump.to}`] : [];
+        });
+        signals.push({
+          entityId: id,
+          metric: "prs.dependabot_major",
+          valueNum: majors.length,
+          valueText: majors.length > 0 ? majors.join(" · ") : undefined,
+          severity: majors.length > 0 ? 1 : 0,
+          url: dependabotUrl,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
 
         const pushedAt = Math.floor(Date.parse(repo.pushedAt) / 1000);
         signals.push({
@@ -405,6 +524,6 @@ export const github: Poller = {
         }
       }
     }
-    return { entities, signals } satisfies PollerResult;
+    return { entities, signals, ...(notes.length ? { notes } : {}) } satisfies PollerResult;
   },
 };

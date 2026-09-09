@@ -67,18 +67,38 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     findings.push(`- ${vulns?.value_num} open Dependabot vulnerability alert(s)${link(vulns)}`);
     done.push("- zero open Dependabot alerts (ops signal: deps.vuln_count = 0); dismissals need a stated reason");
   }
+  // Human and Dependabot PRs are separate findings: the bot's PRs are a
+  // chore with a fixed recipe, a person's PR waiting is a relationship.
   const prs = by("prs.open");
+  const bots = by("prs.dependabot_count");
   const oldestPr = by("prs.oldest_days");
-  if ((prs?.value_num ?? 0) > 0) {
+  const humanPrs = (prs?.value_num ?? 0) - (bots?.value_num ?? 0);
+  if (humanPrs > 0) {
     const age = (oldestPr?.value_num ?? 0) > 0 ? `, oldest open ${oldestPr?.value_num}d` : "";
-    findings.push(`- ${prs?.value_num} open PR(s)${age}${link(prs)}`);
+    findings.push(`- ${humanPrs} open PR(s)${age}${link(prs)}`);
     if ((oldestPr?.value_num ?? 0) >= 14) {
       done.push("- every open PR has a decision: merged, updated with what it needs, or closed with a reason");
     }
   }
+  if ((bots?.value_num ?? 0) > 0) {
+    const majors = by("prs.dependabot_major");
+    const majorNote = (majors?.value_num ?? 0) > 0 && majors?.value_text ? ` — major bumps need a changelog read: ${majors.value_text}` : "";
+    findings.push(`- ${bots?.value_num} open Dependabot PR(s)${bots?.value_text ? ` (${bots.value_text})` : ""}${link(bots)}${majorNote}`);
+    done.push("- every Dependabot PR is merged with green CI or closed with a reason; never approve a major bump without reading its release notes (ops signal: prs.dependabot_count = 0)");
+  }
   const issues = by("issues.open");
+  const idle = by("issues.idle_90d");
+  const fresh = by("issues.new_7d");
   if ((issues?.value_num ?? 0) > 0) {
-    findings.push(`- ${issues?.value_num} open issue(s)${link(issues)} — triage them; fixing is optional, deciding is not`);
+    const shape = [
+      (fresh?.value_num ?? 0) > 0 ? `${fresh?.value_num} opened in the last 7d` : "",
+      (idle?.value_num ?? 0) > 0 ? `${idle?.value_num} untouched for 90d+` : "",
+    ].filter(Boolean).join(", ");
+    findings.push(`- ${issues?.value_num} open issue(s)${shape ? ` (${shape})` : ""}${link(issues)} — triage them; fixing is optional, deciding is not`);
+  }
+  if ((idle?.value_num ?? 0) > 0) {
+    findings.push(`- idle issues to decide on: ${idle?.value_text ?? ""}${link(idle)} — still wanted, or close with a reason`);
+    done.push("- no open issue has gone 90d without a touch (ops signal: issues.idle_90d = 0)");
   }
 
   if (findings.length === 0) return null;

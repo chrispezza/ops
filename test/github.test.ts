@@ -13,8 +13,8 @@ function repoNode(overrides: Record<string, unknown>) {
     description: null,
     primaryLanguage: { name: "TypeScript" },
     repositoryTopics: { nodes: [] },
-    issues: { totalCount: 0 },
-    pullRequests: { totalCount: 0 },
+    issues: { totalCount: 0, nodes: [] },
+    pullRequests: { totalCount: 0, nodes: [] },
     vulnerabilityAlerts: { totalCount: 0 },
     defaultBranchRef: null,
     ...overrides,
@@ -138,6 +138,110 @@ describe("github poller", () => {
     const pushedEpoch = Math.floor(Date.parse("2026-08-02T12:00:00Z") / 1000);
     expect(pushed?.observedAt).toBe(pushedEpoch);
     expect(pushed?.dedupeKey).toBe(String(pushedEpoch));
+  });
+
+  it("separates human PR age from Dependabot PRs and flags major bumps", async () => {
+    const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const pr = (number: number, title: string, login: string, ageDays: number) => ({
+      number,
+      title,
+      createdAt: daysAgo(ageDays),
+      author: { login },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/deprep",
+            url: "https://github.com/clownware/deprep",
+            pullRequests: {
+              totalCount: 5,
+              nodes: [
+                pr(78, "chore(deps): bump the next-cloudflare group with 4 updates", "dependabot", 35),
+                pr(80, "chore(deps): bump vitest from 4.1.11 to 5.0.0", "dependabot", 20),
+                pr(81, "chore(ci): Bump docker/setup-buildx-action from 3 to 4", "dependabot", 20),
+                pr(82, "chore(deps): bump preact from 10.29.7 to 10.29.8", "dependabot", 2),
+                pr(83, "feat: real work", "chrispezza", 16),
+              ],
+            },
+          }),
+          repoNode({ nameWithOwner: "clownware/quiet", url: "https://github.com/clownware/quiet" }),
+        ]),
+      ),
+    );
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const sig = (id: string, metric: string) => result.signals.find((s) => s.entityId === id && s.metric === metric);
+
+    // human PR age ignores the older bot PR (35d) and reads the 16d human one
+    const human = sig("repo:clownware/deprep", "prs.oldest_days");
+    expect(human?.valueNum).toBe(16);
+    expect(human?.severity).toBe(1);
+    expect(human?.url).toContain("-author%3Aapp%2Fdependabot");
+
+    const bots = sig("repo:clownware/deprep", "prs.dependabot_count");
+    expect(bots?.valueNum).toBe(4);
+    expect(bots?.valueText).toBe("oldest 35d");
+    expect(bots?.severity).toBe(1); // a month of bot rot is a chore, not an incident
+
+    const majors = sig("repo:clownware/deprep", "prs.dependabot_major");
+    expect(majors?.valueNum).toBe(2);
+    expect(majors?.valueText).toBe("#80 vitest 4→5 · #81 docker/setup-buildx-action 3→4");
+    expect(majors?.severity).toBe(1);
+
+    // a repo with no PRs still emits every PR metric at zero, so a merged-away
+    // finding resolves instead of its last severity staying "latest" forever
+    expect(sig("repo:clownware/quiet", "prs.oldest_days")).toMatchObject({ valueNum: 0, severity: 0 });
+    expect(sig("repo:clownware/quiet", "prs.dependabot_count")).toMatchObject({ valueNum: 0, severity: 0 });
+    expect(sig("repo:clownware/quiet", "prs.dependabot_major")).toMatchObject({ valueNum: 0, severity: 0 });
+    expect(result.notes).toBeUndefined();
+  });
+
+  it("describes the issue backlog shape and reports capped inspection", async () => {
+    const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const issue = (number: number, createdDays: number, updatedDays: number) => ({
+      number,
+      createdAt: daysAgo(createdDays),
+      updatedAt: daysAgo(updatedDays),
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/gittunes_website",
+            url: "https://github.com/clownware/gittunes_website",
+            issues: {
+              totalCount: 5,
+              nodes: [issue(3, 159, 102), issue(7, 120, 95), issue(20, 40, 12), issue(31, 3, 3), issue(32, 1, 0)],
+            },
+          }),
+          repoNode({
+            nameWithOwner: "clownware/busy",
+            issues: { totalCount: 45, nodes: Array.from({ length: 30 }, (_, i) => issue(i + 1, 10, 1)) },
+            pullRequests: { totalCount: 25, nodes: Array.from({ length: 20 }, (_, i) => ({ number: i + 1, title: "x", createdAt: daysAgo(1), author: { login: "dependabot" } })) },
+          }),
+        ]),
+      ),
+    );
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const sig = (id: string, metric: string) => result.signals.find((s) => s.entityId === id && s.metric === metric);
+
+    const idle = sig("repo:clownware/gittunes_website", "issues.idle_90d");
+    expect(idle?.valueNum).toBe(2);
+    expect(idle?.valueText).toBe("#3 · #7");
+    expect(idle?.severity).toBe(1);
+    expect(idle?.url).toContain("sort%3Aupdated-asc");
+    expect(sig("repo:clownware/gittunes_website", "issues.new_7d")?.valueNum).toBe(2);
+    expect(sig("repo:clownware/gittunes_website", "issues.oldest_days")?.valueNum).toBe(159);
+
+    // five or more forgotten issues is a medium finding
+    expect(sig("repo:clownware/busy", "issues.idle_90d")?.severity).toBe(0);
+    // caps are never silent (poller contract)
+    expect(result.notes).toEqual([
+      "clownware/busy: inspected 30 of 45 open issues",
+      "clownware/busy: inspected 20 of 25 open PRs",
+    ]);
   });
 
   it("emits release age, CI duration, and fail streak when the wider grants respond", async () => {
