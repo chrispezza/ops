@@ -166,12 +166,12 @@ describe("/digest page", () => {
   });
 });
 
-describe("GET /digest.md", () => {
+describe("GET /digest/md", () => {
   it("requires the bearer token and returns markdown", async () => {
     await seed();
-    expect((await SELF.fetch("https://ops.local/digest.md")).status).toBe(401);
-    expect((await SELF.fetch("https://ops.local/digest.md", { headers: { authorization: "Bearer nope" } })).status).toBe(401);
-    const ok = await SELF.fetch("https://ops.local/digest.md?since=7d", { headers: { authorization: `Bearer ${DIGEST_TOKEN}` } });
+    expect((await SELF.fetch("https://ops.local/digest/md")).status).toBe(401);
+    expect((await SELF.fetch("https://ops.local/digest/md", { headers: { authorization: "Bearer nope" } })).status).toBe(401);
+    const ok = await SELF.fetch("https://ops.local/digest/md?since=7d", { headers: { authorization: `Bearer ${DIGEST_TOKEN}` } });
     expect(ok.status).toBe(200);
     expect(ok.headers.get("content-type")).toContain("text/markdown");
     expect(ok.headers.get("cache-control")).toBe("no-store");
@@ -181,7 +181,7 @@ describe("GET /digest.md", () => {
   it("is disabled without DIGEST_TOKEN", async () => {
     const ctx = createExecutionContext();
     const res = await worker.fetch(
-      new Request("https://ops.local/digest.md", { headers: { authorization: `Bearer ${DIGEST_TOKEN}` } }),
+      new Request("https://ops.local/digest/md", { headers: { authorization: `Bearer ${DIGEST_TOKEN}` } }),
       { ...env, DIGEST_TOKEN: undefined } as unknown as Env,
       ctx,
     );

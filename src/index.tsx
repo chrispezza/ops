@@ -52,9 +52,12 @@ const WEEKLY_CRON = "0 12 * * 5";
 
 // Machine endpoints authenticate with their own bearer token (constant-time
 // compare in ingest.ts) instead of a browser login: CI pushes to /ingest and an
-// agent pulls /digest.md, and neither can complete an Access flow. Both are
+// agent pulls /digest/md, and neither can complete an Access flow. Both are
 // exempt from the assertion check and nothing else is.
-const MACHINE_ROUTES = new Set(["/ingest", "/digest.md"]);
+// /digest/md, not /digest.md: the path is scoped in Cloudflare Access as its
+// own destination, and a second segment is what keeps it from also matching
+// the HTML page at /digest.
+const MACHINE_ROUTES = new Set(["/ingest", "/digest/md"]);
 const DAY = 86_400;
 
 const app = new Hono<{ Bindings: Env }>();
@@ -339,7 +342,7 @@ app.get("/digest", async (c) => {
 // report; judgment stays with the reader (ADR-001). Read-only, but it is the
 // whole portfolio's state in one response, so it carries its own token, the
 // same SHA-256-then-timingSafeEqual compare as /ingest, and no caching.
-app.get("/digest.md", async (c) => {
+app.get("/digest/md", async (c) => {
   const token = c.env.DIGEST_TOKEN;
   if (!token) return c.text("digest disabled: DIGEST_TOKEN not configured", 503);
   if (!(await tokenMatches(c.req.header("authorization"), token))) return c.text("unauthorized", 401);

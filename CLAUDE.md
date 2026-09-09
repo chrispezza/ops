@@ -83,7 +83,7 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 
 - Every state-mutating `POST` requires an `Origin` header matching the
   deployment (same-origin gate in `src/index.tsx`). Do not exempt new routes.
-- `POST /ingest` and `GET /digest.md` are the only Access exemptions
+- `POST /ingest` and `GET /digest/md` are the only Access exemptions
   (`MACHINE_ROUTES` in `src/index.tsx`), each gated by its own bearer token
   compared in constant time via `tokenMatches` in `src/ingest.ts`. Keep the
   SHA-256-then-timingSafeEqual pattern; do not compare token strings directly.
