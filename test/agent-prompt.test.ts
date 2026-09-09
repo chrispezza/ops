@@ -65,9 +65,12 @@ describe("buildAgentPrompt", () => {
         sig("issues.open", 8, 0, null, "https://github.com/clownware/gittunes/issues"),
         sig("issues.idle_90d", 2, 1, "#3 · #7", "https://github.com/clownware/gittunes/issues?q=idle"),
         sig("issues.new_7d", 3, 0),
+        sig("issues.flagged", 1, 3, "#51 plaintext Kit API key (security)", "https://github.com/clownware/gittunes/issues?q=security"),
       ],
       NOW,
     );
+    expect(prompt).toContain("1 issue(s) labeled for attention, worst first: #51 plaintext Kit API key (security) — https://github.com/clownware/gittunes/issues?q=security");
+    expect(prompt).toContain("issues.flagged = 0");
     expect(prompt).toContain("1 open PR(s), oldest open 16d"); // 5 total minus 4 bot
     expect(prompt).toContain("4 open Dependabot PR(s) (oldest 35d) — https://github.com/clownware/gittunes/pulls?q=dependabot — major bumps need a changelog read: #80 vitest 4→5");
     expect(prompt).toContain("8 open issue(s) (3 opened in the last 7d, 2 untouched for 90d+)");

@@ -86,6 +86,13 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     findings.push(`- ${bots?.value_num} open Dependabot PR(s)${bots?.value_text ? ` (${bots.value_text})` : ""}${link(bots)}${majorNote}`);
     done.push("- every Dependabot PR is merged with green CI or closed with a reason; never approve a major bump without reading its release notes (ops signal: prs.dependabot_count = 0)");
   }
+  // Labeled issues come first among issue findings: the label is the
+  // maintainer's own tiering, so it outranks anything inferred from age.
+  const flagged = by("issues.flagged");
+  if ((flagged?.value_num ?? 0) > 0) {
+    findings.push(`- ${flagged?.value_num} issue(s) labeled for attention, worst first: ${flagged?.value_text ?? ""}${link(flagged)}`);
+    done.push("- every labeled issue is fixed, or closed with a reason (ops signal: issues.flagged = 0)");
+  }
   const issues = by("issues.open");
   const idle = by("issues.idle_90d");
   const fresh = by("issues.new_7d");
