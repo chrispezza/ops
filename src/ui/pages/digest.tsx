@@ -132,7 +132,7 @@ export function DigestPage(props: { digest: Digest; hasToken: boolean; now: numb
       <section class="section">
         <h2>Machine-readable</h2>
         <p class="hint">
-          <code>GET /digest.md?since={d.days}d</code> with <code>Authorization: Bearer $DIGEST_TOKEN</code> returns this
+          <code>GET /digest/md?since={d.days}d</code> with <code>Authorization: Bearer $DIGEST_TOKEN</code> returns this
           digest as markdown for an agent to narrate.{" "}
           {props.hasToken ? "Token configured." : "DIGEST_TOKEN is not set — the endpoint returns 503 until it is."}
         </p>

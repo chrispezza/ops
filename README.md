@@ -52,7 +52,7 @@ per-poller status with error text, and budget/weight configuration.
 **Digest** (`/digest?since=7d`) is the same signals read along the time axis:
 findings that appeared or escalated in the window, findings that resolved, new
 entities, the backlog as it stands, and spend against the prior window. A
-Friday cron pushes the headline through ntfy, and `GET /digest.md` returns the
+Friday cron pushes the headline through ntfy, and `GET /digest/md` returns the
 digest as markdown behind its own bearer token, so a weekly agent routine can
 fetch the facts and write the narrative without touching GitHub itself.
 
@@ -133,7 +133,7 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `X_BEARER_TOKEN` | `x_usage` |
 | `CLOUDFLARE_API_TOKEN` | `cloudflare` — scope it read-only (Account Analytics:Read + D1:Read), never the Global key |
 | `INGEST_TOKEN` | `POST /ingest` — without it the endpoint returns 503 |
-| `DIGEST_TOKEN` | `GET /digest.md` — without it the endpoint returns 503 |
+| `DIGEST_TOKEN` | `GET /digest/md` — without it the endpoint returns 503 |
 | `NTFY_URL` | push notifications for new high-severity findings, and the Friday digest |
 | `NTFY_TOKEN` | auth for a protected ntfy topic |
 
@@ -188,7 +188,7 @@ misconfigured Access policy is not instantly catastrophic:
   matching the deployment. That blocks cross-site request forgery and, because
   non-browser clients send no `Origin` at all, anonymous `curl` against the
   write routes — including `/health/run`, which fans out to every upstream API.
-- **`POST /ingest` and `GET /digest.md` are exempt and carry their own bearer
+- **`POST /ingest` and `GET /digest/md` are exempt and carry their own bearer
   tokens**, compared in constant time, so CI can push and an agent can pull
   through an Access service token or a bypass policy for those two paths.
 

@@ -26,7 +26,7 @@ export const DIGEST_MAX_DAYS = 30;
 
 // Current-state metrics summed across active entities for the "now" strip.
 // These are the GitHub poller's backlog-shape signals: the digest's consumer
-// (a person on Friday, or the agent reading /digest.md) wants the count of
+// (a person on Friday, or the agent reading /digest/md) wants the count of
 // idle issues and major Dependabot bumps next to what changed, so it can
 // decide without a second request.
 export const BACKLOG_METRICS = [
@@ -97,7 +97,7 @@ export function digestHeadline(d: Digest): string {
   ].join(" · ");
 }
 
-// Markdown for GET /digest.md — the facts half of the Friday report. The
+// Markdown for GET /digest/md — the facts half of the Friday report. The
 // agent that reads it supplies judgment; Ops supplies what it uniquely holds
 // (ADR-001), which is why every line carries a deep link and the signal name
 // so the agent can cite and re-check it.
