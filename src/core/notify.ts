@@ -20,15 +20,18 @@ interface AlertRow {
 export async function notifyNewAlerts(db: D1Database, env: Env, now: number): Promise<void> {
   if (!env.NTFY_URL) return;
 
+  // Latest row per (entity, metric) comes from the signal_latest pointer table
+  // (ADR-005), never a window scan. The previous ROW_NUMBER() OVER the whole
+  // signals table ran on every derive pass (25+ times a day) and read every
+  // row each time: ~5M rows/day by 2026-09-12, which tripped D1's free-tier
+  // daily read cap for the whole account and 500'd every page until midnight UTC.
   const res = await db
     .prepare(
       `SELECT s.entity_id, e.name AS entity_name, s.metric, s.severity, s.value_text, s.value_num
-       FROM (
-         SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id, metric ORDER BY observed_at DESC, id DESC) AS rn
-         FROM signals
-       ) s
-       JOIN entities e ON e.id = s.entity_id
-       WHERE s.rn = 1 AND e.archived = 0 AND s.severity >= 3 AND e.kind != 'poller'`,
+       FROM signal_latest l
+       JOIN signals s ON s.id = l.signal_id
+       JOIN entities e ON e.id = l.entity_id
+       WHERE e.archived = 0 AND s.severity >= 3 AND e.kind != 'poller'`,
     )
     .all<AlertRow>();
 
