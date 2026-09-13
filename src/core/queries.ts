@@ -147,8 +147,11 @@ export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
   // counts as fresh data — otherwise the freshness chip would age forever
   // while the poller was in fact working. Unconfigured runs are ok:false.
   const ok = (col: string) => `json_extract(${col}, '$.ok') = 1`;
-  // Last ok run is a filtered latest, which the pointer table can't answer;
-  // it and the onset query walk poller.status history via idx_signals_metric.
+  // The last ok run is the runner-maintained `poller.last_ok` row (migration
+  // 0004), a signal_latest pointer like any other latest. The onset scan is
+  // then bounded to the status rows after it — none for a healthy poller —
+  // where it used to json_extract its way through every poller.status row on
+  // every page view (this runs in the layout's freshness chip).
   const [entities, lastRuns, lastOks, onsets] = await Promise.all([
     db.prepare("SELECT id, name FROM entities WHERE kind = 'poller' ORDER BY id").all<{ id: string; name: string }>(),
     db
@@ -159,21 +162,19 @@ export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
       .all<SignalRow>(),
     db
       .prepare(
-        `SELECT * FROM (
-           SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY observed_at DESC, id DESC) AS rn
-           FROM signals WHERE metric = 'poller.status' AND ${ok("value_text")}
-         ) WHERE rn = 1`,
+        `SELECT s.* FROM signal_latest l JOIN signals s ON s.id = l.signal_id
+         WHERE l.metric = 'poller.last_ok'`,
       )
       .all<SignalRow>(),
     db
       .prepare(
-        `SELECT s.entity_id, MIN(s.observed_at) AS onset FROM signals s
-         WHERE s.metric = 'poller.status' AND NOT (${ok("s.value_text")})
-           AND s.observed_at > coalesce((
-             SELECT MAX(ok.observed_at) FROM signals ok
-             WHERE ok.metric = 'poller.status' AND ${ok("ok.value_text")} AND ok.entity_id = s.entity_id
-           ), 0)
-         GROUP BY s.entity_id`,
+        `SELECT p.id AS entity_id, MIN(s.observed_at) AS onset
+         FROM entities p
+         LEFT JOIN signal_latest l ON l.entity_id = p.id AND l.metric = 'poller.last_ok'
+         JOIN signals s ON s.metric = 'poller.status' AND s.entity_id = p.id
+           AND s.observed_at > coalesce(l.observed_at, 0)
+         WHERE p.kind = 'poller' AND NOT (${ok("s.value_text")})
+         GROUP BY p.id`,
       )
       .all<{ entity_id: string; onset: number }>(),
   ]);

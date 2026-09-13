@@ -563,6 +563,23 @@ app.get("/partials/freshness", async (c) => {
   return c.html(<FreshnessChip health={health} now={now} />);
 });
 
+// Hono's default error page is a bare "Internal Server Error". The one outage
+// shape this deployment has actually had (2026-09-12) is D1 refusing every
+// query because the account's daily row-read allowance was spent — a 503 with
+// a reset time, not a 500 with nothing. Plain text on purpose: the layout's
+// freshness chip queries D1 and would throw again inside the handler.
+app.onError((err, c) => {
+  console.error(err);
+  const message = err instanceof Error ? err.message : String(err);
+  const exhausted = /row read limit|code: 7500/i.test(message);
+  return c.text(
+    exhausted
+      ? `ops: D1 refused the query — the account's daily row-read allowance is spent. Every read on every database fails until 00:00 UTC.\n\n${message}`
+      : `ops: ${message}`,
+    exhausted ? 503 : 500,
+  );
+});
+
 // Hono's default 404 is bare text with no nav — a dead end for any stale
 // bookmark or renamed entity. Same layout, a way back.
 app.notFound(async (c) => {

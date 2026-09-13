@@ -22,11 +22,36 @@ interface Row {
   script?: string;
 }
 
-function stubCf(rows: Row[]) {
+interface D1Row {
+  date: string;
+  rowsRead: number;
+  rowsWritten?: number;
+  databaseId?: string;
+}
+
+const DEFAULT_DBS = [{ uuid: "uuid-1", name: "ops", file_size: 12_582_912 }];
+
+function stubCf(rows: Row[], d1Rows: D1Row[] = [], databases = DEFAULT_DBS) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("/graphql") && String(init?.body).includes("d1AnalyticsAdaptiveGroups")) {
+        return Response.json({
+          data: {
+            viewer: {
+              accounts: [
+                {
+                  d1AnalyticsAdaptiveGroups: d1Rows.map((r) => ({
+                    dimensions: { databaseId: r.databaseId ?? "uuid-1", date: r.date },
+                    sum: { rowsRead: r.rowsRead, rowsWritten: r.rowsWritten ?? 0 },
+                  })),
+                },
+              ],
+            },
+          },
+        });
+      }
       if (url.includes("/graphql")) {
         return Response.json({
           data: {
@@ -44,7 +69,7 @@ function stubCf(rows: Row[]) {
         });
       }
       if (url.includes("/d1/database")) {
-        return Response.json({ result: [{ uuid: "uuid-1", name: "ops", file_size: 12_582_912 }] });
+        return Response.json({ result: databases });
       }
       throw new Error(`unexpected fetch ${url}`);
     }),
@@ -113,6 +138,51 @@ describe("cloudflare poller", () => {
     expect(result.signals.find((s) => s.metric === "cf.errors")?.valueNum).toBe(0);
     const rate = result.signals.find((s) => s.metric === "cf.error_rate");
     expect(rate).toMatchObject({ valueNum: 0, severity: 0, valueText: `0 of 216 requests on ${day(1)}` });
+  });
+
+  it("rates the account's D1 row reads against the daily allowance on the last complete day", async () => {
+    stubCf(
+      [{ date: day(1), status: "success", requests: 100 }],
+      [
+        { date: day(2), rowsRead: 4_116_167, rowsWritten: 68_702 },
+        { date: day(1), rowsRead: 5_829_841, rowsWritten: 53_703 },
+        { date: day(1), rowsRead: 105_487, databaseId: "uuid-2" }, // second database, listed below
+        { date: day(0), rowsRead: 5_925_159 }, // today's partial bucket: recorded, never judged
+        { date: day(1), rowsRead: 999, databaseId: "uuid-unlisted" }, // not in the list call → dropped
+      ],
+      [
+        { uuid: "uuid-1", name: "ops", file_size: 45_780_992 },
+        { uuid: "uuid-2", name: "pantry-intel", file_size: 200_704 },
+      ],
+    );
+    const result = await cloudflare.poll(cfEnv, noCtx);
+    expect(result.entities.map((e) => e.id).sort()).toEqual(["cf:account", "d1:ops", "d1:pantry-intel", "worker:ops"]);
+
+    const reads = result.signals.filter((s) => s.metric === "d1.rows_read");
+    expect(reads).toHaveLength(4); // 3 ops buckets + 1 pantry-intel; the unlisted database emits nothing
+    expect(reads.find((s) => s.entityId === "d1:ops" && s.dedupeKey === String(Math.floor(Date.parse(day(1)) / 1000)))?.valueNum).toBe(5_829_841);
+
+    const cap = result.signals.find((s) => s.metric === "d1.read_cap_pct");
+    expect(cap?.entityId).toBe("cf:account");
+    expect(cap?.valueNum).toBe(118.7); // (5,829,841 + 105,487) / 5,000,000
+    expect(cap?.severity).toBe(3);
+    expect(cap?.valueText).toBe(`5.94M of 5.00M rows read on ${day(1)} · ops 5.83M, pantry-intel 105k`);
+  });
+
+  it("warns at 80% of the D1 allowance and stays calm below it", async () => {
+    stubCf([{ date: day(1), status: "success", requests: 100 }], [{ date: day(1), rowsRead: 4_100_000 }]);
+    let cap = (await cloudflare.poll(cfEnv, noCtx)).signals.find((s) => s.metric === "d1.read_cap_pct");
+    expect(cap).toMatchObject({ valueNum: 82, severity: 2 });
+
+    stubCf([{ date: day(1), status: "success", requests: 100 }], [{ date: day(1), rowsRead: 150_000 }]);
+    cap = (await cloudflare.poll(cfEnv, noCtx)).signals.find((s) => s.metric === "d1.read_cap_pct");
+    expect(cap).toMatchObject({ valueNum: 3, severity: 0 });
+
+    // only today's partial bucket: nothing complete to judge, no account entity
+    stubCf([{ date: day(1), status: "success", requests: 100 }], [{ date: day(0), rowsRead: 9_000_000 }]);
+    const result = await cloudflare.poll(cfEnv, noCtx);
+    expect(result.signals.find((s) => s.metric === "d1.read_cap_pct")).toBeUndefined();
+    expect(result.entities.find((e) => e.id === "cf:account")).toBeUndefined();
   });
 
   it("skips the rate for a worker with no complete day yet, and reports unconfigured calmly", async () => {

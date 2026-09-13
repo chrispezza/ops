@@ -112,6 +112,35 @@ describe("uptime target cap", () => {
     expect(ids.has(`https://site${String(MAX_TARGETS + 2).padStart(2, "0")}.example`)).toBe(false);
   });
 
+  it("reports the outage onset from the runner-maintained last-ok pointer, not a history walk", async () => {
+    await seed();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok")));
+    await runPollers(env, "hourly", { pollers: [uptime], now: NOW - 7200 });
+    // two failing runs after the success: onset is the FIRST of them
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    );
+    const broken = { ...uptime, poll: async () => { throw new Error("upstream down"); } };
+    await runPollers(env, "hourly", { pollers: [broken], now: NOW - 3600 });
+    await runPollers(env, "hourly", { pollers: [broken], now: NOW });
+
+    const lastOk = (await latestSignals(env.DB, "poller:uptime")).find((s) => s.metric === "poller.last_ok");
+    expect(lastOk?.observed_at).toBe(NOW - 7200);
+    const row = (await pollerHealth(env.DB)).find((h) => h.entityId === "poller:uptime");
+    expect(row?.lastRun?.severity).toBe(3);
+    expect(row?.lastOk?.observed_at).toBe(NOW - 7200);
+    expect(row?.failingSince).toBe(NOW - 3600);
+
+    // a poller that has never succeeded: onset is its first run
+    await runPollers(env, "hourly", { pollers: [{ ...broken, id: "never" }], now: NOW - 60 });
+    const never = (await pollerHealth(env.DB)).find((h) => h.entityId === "poller:never");
+    expect(never?.lastOk).toBeNull();
+    expect(never?.failingSince).toBe(NOW - 60);
+  });
+
   it("under the cap there is no note and the status stays severity 0", async () => {
     await seed();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("ok")));

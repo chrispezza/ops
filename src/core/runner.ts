@@ -1,5 +1,5 @@
 import { POLLERS } from "../pollers";
-import type { KnownEntity, Poller, PollerCtx, Schedule } from "../pollers/types";
+import type { KnownEntity, Poller, PollerCtx, Schedule, SignalInsert } from "../pollers/types";
 import { insertSignals, upsertEntities } from "./store";
 
 function makeCtx(db: D1Database): PollerCtx {
@@ -94,15 +94,18 @@ async function recordPollerStatus(db: D1Database, summary: RunSummary, now: numb
       ? 1
       : 3;
   await upsertEntities(db, [{ id: entityId, kind: "poller", name: summary.pollerId }], now);
-  await insertSignals(db, "core", [
-    {
-      entityId,
-      metric: "poller.status",
-      valueText: JSON.stringify(summary),
-      valueNum: summary.durationMs,
-      severity,
-      observedAt: now,
-      dedupeKey: String(now),
-    },
-  ]);
+  const status: SignalInsert = {
+    entityId,
+    metric: "poller.status",
+    valueText: JSON.stringify(summary),
+    valueNum: summary.durationMs,
+    severity,
+    observedAt: now,
+    dedupeKey: String(now),
+  };
+  // A successful run also moves the poller's fixed-dedupe `poller.last_ok` row
+  // forward (one row per poller, upserted in place). /health reads the last
+  // success straight from signal_latest instead of walking every status row
+  // with json_extract (migration 0004).
+  await insertSignals(db, "core", summary.ok ? [status, { ...status, metric: "poller.last_ok", dedupeKey: "last_ok" }] : [status]);
 }

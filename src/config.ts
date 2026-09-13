@@ -72,6 +72,7 @@ export const METRIC_LABELS: Record<string, string> = {
   "usage.monthly_posts": "posts this month",
   "usage.cap_pct": "post cap used",
   "poller.status": "poller status",
+  "poller.last_ok": "last successful run",
   "hygiene.uncategorized": "category tag",
   "hygiene.inactive": "activity",
   "manifest.description": "manifest description",
@@ -80,6 +81,9 @@ export const METRIC_LABELS: Record<string, string> = {
   "cf.errors": "errors",
   "cf.error_rate": "error rate",
   "d1.size_bytes": "database size",
+  "d1.rows_read": "rows read",
+  "d1.rows_written": "rows written",
+  "d1.read_cap_pct": "D1 daily read allowance used",
   "docs.score": "docs health",
 };
 

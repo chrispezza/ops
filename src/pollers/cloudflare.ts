@@ -46,6 +46,43 @@ interface GqlResponse {
   errors?: { message: string }[];
 }
 
+// D1 bills every row a query touches, account-wide, against a daily allowance.
+// When it runs out every query on every database fails until 00:00 UTC —
+// ops 500'd and deprep went dark on 2026-09-02 and 2026-09-12 exactly this way,
+// and nothing in the dashboards said so. Read the count the same way the
+// Workers rate is read: daily buckets, judged on the last complete day.
+const D1_FREE_TIER_ROW_READS_PER_DAY = 5_000_000;
+const D1_QUERY = /* GraphQL */ `
+  query ($accountTag: String!, $start: Time!, $end: Time!) {
+    viewer {
+      accounts(filter: { accountTag: $accountTag }) {
+        d1AnalyticsAdaptiveGroups(limit: 1000, filter: { datetime_geq: $start, datetime_leq: $end }) {
+          dimensions {
+            databaseId
+            date
+          }
+          sum {
+            rowsRead
+            rowsWritten
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface D1Row {
+  dimensions: { databaseId: string; date: string };
+  sum: { rowsRead: number; rowsWritten: number };
+}
+
+interface D1GqlResponse {
+  data?: { viewer: { accounts: { d1AnalyticsAdaptiveGroups: D1Row[] }[] } };
+  errors?: { message: string }[];
+}
+
+const compact = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(0)}k` : String(n));
+
 interface DayTotals {
   requests: number;
   errors: number;
@@ -59,6 +96,9 @@ export const cloudflare: Poller = {
     "cf.errors": "interval",
     "cf.error_rate": "state",
     "d1.size_bytes": "state",
+    "d1.rows_read": "interval",
+    "d1.rows_written": "interval",
+    "d1.read_cap_pct": "state",
   },
   async poll(env) {
     const token = env.CLOUDFLARE_API_TOKEN;
@@ -171,6 +211,67 @@ export const cloudflare: Poller = {
         entityId: id,
         metric: "d1.size_bytes",
         valueNum: size,
+        observedAt: now,
+        dedupeKey: dayBucket,
+      });
+    }
+
+    // —— D1 read budget, daily buckets over the same settle window ——
+    const nameByUuid = new Map((dbs.result ?? []).map((db) => [db.uuid, db.name]));
+    const d1Res = await fetch(GQL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        query: D1_QUERY,
+        variables: { accountTag: account, start: `${start}T00:00:00Z`, end: `${end}T23:59:59Z` },
+      }),
+    });
+    if (!d1Res.ok) throw new Error(`cloudflare: HTTP ${d1Res.status} from d1 analytics`);
+    const d1 = (await d1Res.json()) as D1GqlResponse;
+    if (!d1.data) throw new Error(`cloudflare: ${d1.errors?.[0]?.message ?? "empty d1 analytics response"}`);
+
+    const readsByDay = new Map<string, Map<string, number>>(); // date -> db name -> rows read
+    for (const row of d1.data.viewer.accounts[0]?.d1AnalyticsAdaptiveGroups ?? []) {
+      const name = nameByUuid.get(row.dimensions.databaseId) ?? row.dimensions.databaseId;
+      const id = `d1:${name}`;
+      if (!entities.has(id)) continue; // a database the list call didn't return: no size, no entity, no orphan signal
+      const periodStart = Math.floor(Date.parse(row.dimensions.date) / 1000);
+      const period = { start: periodStart, end: periodStart + DAY };
+      const base = { entityId: id, observedAt: period.end, period, dedupeKey: String(periodStart) };
+      signals.push(
+        { ...base, metric: "d1.rows_read", valueNum: row.sum.rowsRead },
+        { ...base, metric: "d1.rows_written", valueNum: row.sum.rowsWritten },
+      );
+      const day = readsByDay.get(row.dimensions.date) ?? new Map<string, number>();
+      day.set(name, (day.get(name) ?? 0) + row.sum.rowsRead);
+      readsByDay.set(row.dimensions.date, day);
+    }
+
+    // The allowance is per account, so the verdict lives on an account entity:
+    // last complete day's total against the cap, with the per-database split
+    // in the text so the culprit reads without a click.
+    const lastDay = [...readsByDay.keys()].filter((date) => date < end).sort().at(-1);
+    if (lastDay) {
+      const perDb = [...(readsByDay.get(lastDay) ?? [])].sort(([, a], [, b]) => b - a);
+      const total = perDb.reduce((sum, [, n]) => sum + n, 0);
+      const pct = Math.round((total / D1_FREE_TIER_ROW_READS_PER_DAY) * 1000) / 10;
+      const accountId = "cf:account";
+      entities.set(accountId, {
+        id: accountId,
+        kind: "account",
+        category: "vendor_api",
+        name: "Cloudflare account",
+        sourceUrl: `https://dash.cloudflare.com/${account}/workers/d1`,
+      });
+      signals.push({
+        entityId: accountId,
+        metric: "d1.read_cap_pct",
+        valueNum: pct,
+        valueText: `${compact(total)} of ${compact(D1_FREE_TIER_ROW_READS_PER_DAY)} rows read on ${lastDay} · ${perDb.map(([name, n]) => `${name} ${compact(n)}`).join(", ")}`,
+        // ≥100%: every D1 query on the account failed from the moment it tripped
+        // until midnight UTC. ≥80%: tomorrow is the day it trips.
+        severity: pct >= 100 ? 3 : pct >= 80 ? 2 : 0,
+        url: `https://dash.cloudflare.com/${account}/workers/d1`,
         observedAt: now,
         dedupeKey: dayBucket,
       });
