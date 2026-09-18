@@ -51,7 +51,13 @@ interface GqlResponse {
 // ops 500'd and deprep went dark on 2026-09-02 and 2026-09-12 exactly this way,
 // and nothing in the dashboards said so. Read the count the same way the
 // Workers rate is read: daily buckets, judged on the last complete day.
+//
+// Writes have their own, much smaller allowance and a worse failure mode: the
+// signal batch is refused before the poller's status row lands, so /health
+// keeps showing the last success while nothing is being stored (2026-09-18,
+// ADR-007). Same watcher, same thresholds, second metric.
 const D1_FREE_TIER_ROW_READS_PER_DAY = 5_000_000;
+const D1_FREE_TIER_ROW_WRITES_PER_DAY = 100_000;
 const D1_QUERY = /* GraphQL */ `
   query ($accountTag: String!, $start: Time!, $end: Time!) {
     viewer {
@@ -99,6 +105,7 @@ export const cloudflare: Poller = {
     "d1.rows_read": "interval",
     "d1.rows_written": "interval",
     "d1.read_cap_pct": "state",
+    "d1.write_cap_pct": "state",
   },
   async poll(env) {
     const token = env.CLOUDFLARE_API_TOKEN;
@@ -230,7 +237,8 @@ export const cloudflare: Poller = {
     const d1 = (await d1Res.json()) as D1GqlResponse;
     if (!d1.data) throw new Error(`cloudflare: ${d1.errors?.[0]?.message ?? "empty d1 analytics response"}`);
 
-    const readsByDay = new Map<string, Map<string, number>>(); // date -> db name -> rows read
+    type PerDb = Map<string, { read: number; written: number }>;
+    const byDay = new Map<string, PerDb>(); // date -> db name -> rows read / written
     for (const row of d1.data.viewer.accounts[0]?.d1AnalyticsAdaptiveGroups ?? []) {
       const name = nameByUuid.get(row.dimensions.databaseId) ?? row.dimensions.databaseId;
       const id = `d1:${name}`;
@@ -242,39 +250,49 @@ export const cloudflare: Poller = {
         { ...base, metric: "d1.rows_read", valueNum: row.sum.rowsRead },
         { ...base, metric: "d1.rows_written", valueNum: row.sum.rowsWritten },
       );
-      const day = readsByDay.get(row.dimensions.date) ?? new Map<string, number>();
-      day.set(name, (day.get(name) ?? 0) + row.sum.rowsRead);
-      readsByDay.set(row.dimensions.date, day);
+      const day = byDay.get(row.dimensions.date) ?? new Map();
+      const prev = day.get(name) ?? { read: 0, written: 0 };
+      day.set(name, { read: prev.read + row.sum.rowsRead, written: prev.written + row.sum.rowsWritten });
+      byDay.set(row.dimensions.date, day);
     }
 
-    // The allowance is per account, so the verdict lives on an account entity:
-    // last complete day's total against the cap, with the per-database split
-    // in the text so the culprit reads without a click.
-    const lastDay = [...readsByDay.keys()].filter((date) => date < end).sort().at(-1);
+    // The allowances are per account, so the verdicts live on an account
+    // entity: last complete day's total against each cap, with the
+    // per-database split in the text so the culprit reads without a click.
+    const lastDay = [...byDay.keys()].filter((date) => date < end).sort().at(-1);
     if (lastDay) {
-      const perDb = [...(readsByDay.get(lastDay) ?? [])].sort(([, a], [, b]) => b - a);
-      const total = perDb.reduce((sum, [, n]) => sum + n, 0);
-      const pct = Math.round((total / D1_FREE_TIER_ROW_READS_PER_DAY) * 1000) / 10;
       const accountId = "cf:account";
+      const dashboard = `https://dash.cloudflare.com/${account}/workers/d1`;
       entities.set(accountId, {
         id: accountId,
         kind: "account",
         category: "vendor_api",
         name: "Cloudflare account",
-        sourceUrl: `https://dash.cloudflare.com/${account}/workers/d1`,
+        sourceUrl: dashboard,
       });
-      signals.push({
-        entityId: accountId,
-        metric: "d1.read_cap_pct",
-        valueNum: pct,
-        valueText: `${compact(total)} of ${compact(D1_FREE_TIER_ROW_READS_PER_DAY)} rows read on ${lastDay} · ${perDb.map(([name, n]) => `${name} ${compact(n)}`).join(", ")}`,
-        // ≥100%: every D1 query on the account failed from the moment it tripped
-        // until midnight UTC. ≥80%: tomorrow is the day it trips.
-        severity: pct >= 100 ? 3 : pct >= 80 ? 2 : 0,
-        url: `https://dash.cloudflare.com/${account}/workers/d1`,
-        observedAt: now,
-        dedupeKey: dayBucket,
-      });
+      const caps = [
+        { metric: "d1.read_cap_pct", verb: "read", key: "read", allowance: D1_FREE_TIER_ROW_READS_PER_DAY },
+        { metric: "d1.write_cap_pct", verb: "written", key: "written", allowance: D1_FREE_TIER_ROW_WRITES_PER_DAY },
+      ] as const;
+      for (const cap of caps) {
+        const perDb = [...(byDay.get(lastDay) ?? [])]
+          .map(([name, n]) => [name, n[cap.key]] as const)
+          .sort(([, a], [, b]) => b - a);
+        const total = perDb.reduce((sum, [, n]) => sum + n, 0);
+        const pct = Math.round((total / cap.allowance) * 1000) / 10;
+        signals.push({
+          entityId: accountId,
+          metric: cap.metric,
+          valueNum: pct,
+          valueText: `${compact(total)} of ${compact(cap.allowance)} rows ${cap.verb} on ${lastDay} · ${perDb.map(([name, n]) => `${name} ${compact(n)}`).join(", ")}`,
+          // ≥100%: every D1 query of that kind on the account failed from the
+          // moment it tripped until midnight UTC. ≥80%: tomorrow is the day.
+          severity: pct >= 100 ? 3 : pct >= 80 ? 2 : 0,
+          url: dashboard,
+          observedAt: now,
+          dedupeKey: dayBucket,
+        });
+      }
     }
 
     return { entities: [...entities.values()], signals } satisfies PollerResult;

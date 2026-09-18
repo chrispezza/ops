@@ -74,7 +74,18 @@ export async function runPollers(
         durationMs: Date.now() - t0,
       };
     }
-    await recordPollerStatus(env.DB, summary, now);
+    // The status write is itself a D1 write. When storage is what failed —
+    // the daily row-write allowance spent, 2026-09-18 — it fails the same way,
+    // and letting it throw here aborted every poller after this one and the
+    // derive pass behind them (spec §3 isolation stops at the first poller).
+    // Nothing can be stored in that state, so the failure goes to the Worker
+    // log and the loop goes on; the write watcher (d1.write_cap_pct) is what
+    // makes it visible on the dashboard afterwards.
+    try {
+      await recordPollerStatus(env.DB, summary, now);
+    } catch (err) {
+      console.error(`runner: could not record status for ${poller.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
     summaries.push(summary);
   }
   return summaries;
