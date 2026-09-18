@@ -6,7 +6,9 @@ import type { KnownEntity, Poller, PollerResult, SignalInsert } from "./types";
 // proposal is stored at severity 0 and nothing downstream acts on it: the loop
 // closes in GitHub, where a human or the weekly agent pass applies a real
 // label, the hourly github poller reads it back as issues.flagged at real
-// severity, and judge.tier_agreement grades how often the proposal matched.
+// severity, and the agreement metrics grade how often the proposal matched —
+// against the maintainer, and against the frontier-model pass that labels the
+// bulk (which is itself graded against the maintainer, so the chain closes).
 // Ops never writes the label itself (ADR-001).
 
 const JEV_URL = "https://api.typesafe.ai/v1/systemone";
@@ -42,6 +44,12 @@ const MAX_REPOS = 30; // bounds subrequests in a single cron invocation
 const BODY_CHARS = 1500; // per issue, to bound request size
 
 const DAY = 86_400;
+
+// A human applying this label to an issue the reference actor tiered says "I
+// looked, the tier stands". Without it, acceptance would be invisible: only
+// overrides leave a human severity label behind, and grading the reference on
+// overrides alone would make it look wrong every time it was checked.
+const REVIEWED_LABEL = "triaged";
 
 // Labels github.ts already grades. "Unlabeled" here means "carries none of
 // these" — an issue labeled `documentation` is still untiered, and those are
@@ -140,30 +148,57 @@ export function labelSeverity(issue: IssueNode): number | null {
   return graded.length > 0 ? Math.max(...graded) : null;
 }
 
-// The severity a HUMAN assigned, or null when every severity label on the issue
-// was applied by an automation. Calibration is the one place provenance
-// decides: grading the judge against a label another model applied measures
-// two models agreeing, not whether the judge matches the maintainer — and
-// judge.tier_agreement is the gate for judge.* ever earning any weight
-// (ADR-006), so it has to be able to prove the judge wrong.
-//
+type Actor = { login: string; __typename: string };
+
+// GraphQL reports a GitHub App as login "x" and REST as "x[bot]"; a configured
+// list should match either spelling.
+const normalizeLogin = (login: string) => login.toLowerCase().replace(/\[bot\]$/, "");
+
+// The labels the issue still carries that were applied by an actor the
+// predicate accepts. The timeline remembers a label that was since removed, so
+// membership in the current label set is checked, not just the event.
+function labelsBy(issue: IssueNode, accept: (actor: Actor) => boolean): string[] {
+  const current = new Set((issue.labels?.nodes ?? []).map((l) => l.name.toLowerCase()));
+  return (issue.timelineItems?.nodes ?? []).flatMap((node) => {
+    const event = node as LabeledEvent;
+    const name = event.label?.name?.toLowerCase();
+    if (!name || !current.has(name)) return [];
+    return event.actor && accept(event.actor) ? [name] : [];
+  });
+}
+
+const maxSeverity = (labels: string[]): number | null => {
+  const graded = labels.map((l) => LABEL_SEVERITY[l]).filter((s): s is 1 | 2 | 3 => s !== undefined);
+  return graded.length > 0 ? Math.max(...graded) : null;
+};
+
 // A GitHub App (the Claude app included) is actor __typename "Bot". An
 // automation driving the REST API with a person's PAT is indistinguishable
 // from that person here, so JUDGE_CALIBRATION_EXCLUDE names those logins.
+const isHuman = (excluded: ReadonlySet<string>) => (actor: Actor) =>
+  actor.__typename === "User" && !excluded.has(normalizeLogin(actor.login));
+const isReference = (actors: ReadonlySet<string>) => (actor: Actor) => actors.has(normalizeLogin(actor.login));
+
+// The severity a HUMAN assigned, or null when no severity label on the issue
+// was applied by a person. This is the top of the calibration chain (ADR-006
+// rule 4): the reference actor is graded against it, and the judge is graded
+// against both.
 export function humanLabelSeverity(issue: IssueNode, excluded: ReadonlySet<string>): number | null {
-  const current = new Set((issue.labels?.nodes ?? []).map((l) => l.name.toLowerCase()));
-  const graded = (issue.timelineItems?.nodes ?? [])
-    .flatMap((node) => {
-      const event = node as LabeledEvent;
-      const name = event.label?.name?.toLowerCase();
-      if (!name || !current.has(name)) return []; // labelled then removed
-      const actor = event.actor;
-      if (!actor || actor.__typename !== "User") return [];
-      if (excluded.has(actor.login.toLowerCase())) return [];
-      const severity = LABEL_SEVERITY[name];
-      return severity === undefined ? [] : [severity];
-    });
-  return graded.length > 0 ? Math.max(...graded) : null;
+  return maxSeverity(labelsBy(issue, isHuman(excluded)));
+}
+
+// The severity a REFERENCE ACTOR assigned — the frontier-model labelling pass
+// named in JUDGE_REFERENCE_ACTORS. Its labels are ground truth for the judge
+// because it is itself graded against the maintainer (judge.reference_agreement);
+// any other automation's labels are ground truth for nothing.
+export function referenceLabelSeverity(issue: IssueNode, actors: ReadonlySet<string>): number | null {
+  return maxSeverity(labelsBy(issue, isReference(actors)));
+}
+
+// A human applied REVIEWED_LABEL: the reference actor's tier was looked at and
+// left standing. Overriding it (a human severity label) is the other review.
+export function reviewedByHuman(issue: IssueNode, excluded: ReadonlySet<string>): boolean {
+  return labelsBy(issue, isHuman(excluded)).includes(REVIEWED_LABEL);
 }
 
 export interface Verdict {
@@ -250,11 +285,11 @@ const parseScope = (raw: string | undefined): Scope =>
 
 const isPrivate = (entity: KnownEntity): boolean => entity.metadata?.private === true;
 
-// Logins whose labels do not count as ground truth. GitHub Apps are already
-// excluded by actor type; this is for automations running under a person's PAT,
-// which the API reports as that person.
-const parseExcluded = (raw: string | undefined): ReadonlySet<string> =>
-  new Set((raw ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+// Comma-separated GitHub logins. JUDGE_CALIBRATION_EXCLUDE: humans whose labels
+// are not ground truth (automations under a person's PAT). JUDGE_REFERENCE_ACTORS:
+// the frontier labelling pass whose labels ARE reference ground truth.
+const parseLogins = (raw: string | undefined): ReadonlySet<string> =>
+  new Set((raw ?? "").split(",").map((s) => normalizeLogin(s.trim())).filter(Boolean));
 
 export const judge: Poller = {
   id: "judge",
@@ -266,13 +301,16 @@ export const judge: Poller = {
   metricSemantics: {
     "judge.issue_tier": "state",
     "judge.tier_agreement": "state",
+    "judge.tier_agreement_human": "state",
+    "judge.reference_agreement": "state",
   },
   async poll(env, ctx): Promise<PollerResult> {
     const key = env.TYPESAFE_API_KEY;
     if (!key) throw new Error("unconfigured: set the TYPESAFE_API_KEY secret to enable this poller");
 
     const scope = parseScope(env.JUDGE_SCOPE);
-    const excluded = parseExcluded(env.JUDGE_CALIBRATION_EXCLUDE);
+    const excluded = parseLogins(env.JUDGE_CALIBRATION_EXCLUDE);
+    const referenceActors = parseLogins(env.JUDGE_REFERENCE_ACTORS);
     const now = Math.floor(Date.now() / 1000);
     const dayBucket = String(now - (now % DAY));
     const signals: SignalInsert[] = [];
@@ -294,9 +332,12 @@ export const judge: Poller = {
 
     let lowConfidence = 0;
     let withheldBodies = 0;
-    let botLabelled = 0;
+    let ungraded = 0;
     let attempted = 0;
     let judged = 0;
+    if (referenceActors.size === 0) {
+      notes.push("JUDGE_REFERENCE_ACTORS unset: calibrating against human labels only");
+    }
     for (const entity of repos) {
       const ref = entity.id.replace(/^repo:/, "");
       const [owner, name] = ref.split("/");
@@ -321,26 +362,61 @@ export const judge: Poller = {
       }
       if (total > nodes.length) notes.push(`${ref}: read ${nodes.length} of ${total} open issues`);
 
-      const withSeverity = nodes.map((issue) => ({
-        issue,
-        labelled: labelSeverity(issue),
-        human: humanLabelSeverity(issue, excluded),
-      }));
+      const withSeverity = nodes.map((issue) => {
+        const human = humanLabelSeverity(issue, excluded);
+        const reference = referenceLabelSeverity(issue, referenceActors);
+        // The tier the judge is graded against: the maintainer's own label
+        // wins; otherwise the reference actor's stands in for it.
+        return {
+          issue,
+          labelled: labelSeverity(issue),
+          human,
+          reference,
+          truth: human ?? reference,
+          reviewed: reviewedByHuman(issue, excluded),
+        };
+      });
       const unlabelled = withSeverity.filter((r) => r.labelled === null).map((r) => r.issue);
-      // Calibration takes only human-applied labels. An issue an automation
-      // tiered is still "labelled" for the proposal split above — it just
-      // cannot serve as ground truth for grading the judge.
-      const humanLabelled = withSeverity.filter((r) => r.human !== null);
-      const autoLabelled = withSeverity.filter((r) => r.labelled !== null && r.human === null).length;
-      if (autoLabelled > 0) botLabelled += autoLabelled;
+      // Calibration takes human- and reference-applied labels. An issue any
+      // other automation tiered is still "labelled" for the proposal split
+      // above — it just cannot serve as ground truth for grading the judge.
+      // Human-labelled issues go first so the cap never starves the human
+      // sample, which is the smaller and more important of the two.
+      const graded = withSeverity
+        .filter((r) => r.truth !== null)
+        .sort((a, b) => Number(b.human !== null) - Number(a.human !== null));
+      ungraded += withSeverity.filter((r) => r.labelled !== null && r.truth === null).length;
       if (unlabelled.length > UNLABELED_CAP) {
         notes.push(`${ref}: proposed tiers for ${UNLABELED_CAP} of ${unlabelled.length} unlabelled issues`);
       }
-      if (humanLabelled.length > LABELED_CAP) {
-        notes.push(`${ref}: calibrated against ${LABELED_CAP} of ${humanLabelled.length} human-labelled issues`);
+      if (graded.length > LABELED_CAP) {
+        notes.push(`${ref}: calibrated against ${LABELED_CAP} of ${graded.length} labelled issues`);
       }
       const toPropose = unlabelled.slice(0, UNLABELED_CAP);
-      const toCalibrate = humanLabelled.slice(0, LABELED_CAP);
+      const toCalibrate = graded.slice(0, LABELED_CAP);
+
+      // The reference actor graded against the maintainer — no model call, just
+      // labels. Of the tiers it applied that a human then reviewed, how many
+      // stood? Accepting is REVIEWED_LABEL; overriding is a human severity
+      // label. This is the error bar on the reference set the judge is graded
+      // against below, so it is emitted even when the judge call fails.
+      if (referenceActors.size > 0) {
+        const reviewed = withSeverity.filter((r) => r.reference !== null && (r.human !== null || r.reviewed));
+        const stood = reviewed.filter((r) => r.human === null || r.human === r.reference).length;
+        signals.push({
+          entityId: entity.id,
+          metric: "judge.reference_agreement",
+          valueNum: reviewed.length > 0 ? Math.round((stood / reviewed.length) * 100) : undefined,
+          valueText:
+            reviewed.length > 0
+              ? `${stood} of ${reviewed.length} reviewed reference tiers stood · ${reviewed.length - stood} overridden`
+              : "no reference tiers reviewed yet",
+          severity: 0,
+          url: `${repoUrl}/issues?q=${encodeURIComponent(labeledQuery())}`,
+          observedAt: now,
+          dedupeKey: dayBucket,
+        });
+      }
 
       // JUDGE_SCOPE=titles: a private repo's issue bodies never leave the
       // deployment. Titles alone still tier usefully; the verdicts are just
@@ -403,30 +479,50 @@ export const judge: Poller = {
         dedupeKey: dayBucket,
       });
 
-      // Calibration: the blind sample, scored against the maintainer's labels.
-      // This is what has to be graded before judge.* earns any more surface.
-      // Low-confidence verdicts are graded here rather than dropped: excluding
-      // the judge's own uncertain answers would flatter the agreement number.
+      // Calibration: the blind sample, scored against the reference tier and,
+      // separately, against the maintainer's own labels. Both have to be graded
+      // before judge.* earns any more surface. Low-confidence verdicts are
+      // graded here rather than dropped: excluding the judge's own uncertain
+      // answers would flatter the agreement number.
       const compared = toCalibrate
-        .map((r) => ({ expected: r.human as number, verdict: verdicts.get(r.issue.number) }))
-        .filter((c): c is { expected: number; verdict: Verdict } => c.verdict !== undefined);
-      const exact = compared.filter((c) => c.verdict.index === c.expected).length;
-      const within = compared.filter((c) => Math.abs(c.verdict.index - c.expected) <= 1).length;
+        .map((r) => ({ human: r.human, expected: r.truth as number, verdict: verdicts.get(r.issue.number) }))
+        .filter((c): c is { human: number | null; expected: number; verdict: Verdict } => c.verdict !== undefined);
+      const agreement = (sample: typeof compared, empty: string, describe: (n: number) => string): SignalInsert => {
+        const exact = sample.filter((c) => c.verdict.index === c.expected).length;
+        const within = sample.filter((c) => Math.abs(c.verdict.index - c.expected) <= 1).length;
+        return {
+          entityId: entity.id,
+          metric: "",
+          valueNum: sample.length > 0 ? Math.round((exact / sample.length) * 100) : undefined,
+          // The denominator is named, because "80% agreement" means nothing
+          // without knowing it was 4 of 5. An empty sample reports no number at
+          // all rather than a 0 that reads as "the judge is always wrong".
+          valueText:
+            sample.length > 0
+              ? `${exact} of ${sample.length} exact · ${within} within one tier · ${describe(sample.length)}`
+              : empty,
+          severity: 0,
+          url: `${repoUrl}/issues?q=${encodeURIComponent(labeledQuery())}`,
+          observedAt: now,
+          dedupeKey: dayBucket,
+        };
+      };
+      const humanCount = compared.filter((c) => c.human !== null).length;
       signals.push({
-        entityId: entity.id,
+        ...agreement(
+          compared,
+          "no human- or reference-labelled issues to compare against",
+          (n) => `${humanCount} human-labelled, ${n - humanCount} reference-labelled`,
+        ),
         metric: "judge.tier_agreement",
-        valueNum: compared.length > 0 ? Math.round((exact / compared.length) * 100) : undefined,
-        // The denominator is named, because "80% agreement" means nothing
-        // without knowing it was 4 of 5. An empty sample reports no number at
-        // all rather than a 0 that reads as "the judge is always wrong".
-        valueText:
-          compared.length > 0
-            ? `${exact} of ${compared.length} exact · ${within} within one tier · human-labelled sample`
-            : "no human-labelled issues to compare against",
-        severity: 0,
-        url: `${repoUrl}/issues?q=${encodeURIComponent(labeledQuery())}`,
-        observedAt: now,
-        dedupeKey: dayBucket,
+      });
+      signals.push({
+        ...agreement(
+          compared.filter((c) => c.human !== null),
+          "no human-labelled issues to compare against",
+          () => "human-labelled sample",
+        ),
+        metric: "judge.tier_agreement_human",
       });
     }
 
@@ -436,11 +532,13 @@ export const judge: Poller = {
     if (attempted > 0 && judged === 0) {
       throw new Error(`judge: no repo could be judged (${attempted} attempted) — ${notes.join("; ")}`);
     }
-    if (botLabelled > 0) {
+    if (ungraded > 0) {
       // Not a failure — but if this number dwarfs the calibration sample, the
-      // portfolio is being tiered by automation and the gate has little to
-      // grade against. That has to be visible, not inferred from a small N.
-      notes.push(`${botLabelled} issue(s) excluded from calibration: severity label not applied by a human`);
+      // portfolio is being tiered by an automation nobody grades and the gate
+      // has little to grade against. Visible, not inferred from a small N.
+      notes.push(
+        `${ungraded} issue(s) excluded from calibration: severity label applied by neither a human nor a reference actor`,
+      );
     }
     if (lowConfidence > 0) {
       notes.push(`${lowConfidence} verdict(s) dropped below the ${MIN_CONFIDENCE} confidence floor`);

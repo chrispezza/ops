@@ -11,7 +11,9 @@ pagefind: true
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-09-18: rule 4 now grades against a reference chain
+(maintainer → frontier labelling pass → judge) instead of maintainer labels
+alone; see "Amendment: the calibration chain" below.
 
 ## Context
 
@@ -81,14 +83,24 @@ We will go with **Option 1**.
 3. **A verdict is a proposal in the maintainer's own vocabulary.** The judge
    emits GitHub label names that `LABEL_SEVERITY` already grades, so acting on
    one means applying that label in GitHub. Ops never applies it (ADR-001).
-4. **The domain must grade itself, against humans only.** `judge.tier_agreement`
-   compares verdicts on a blind sample of already-labelled issues against the
-   maintainer's labels. Only labels a **human** applied count as ground truth:
-   a GitHub App is excluded by actor type, and `JUDGE_CALIBRATION_EXCLUDE` names
-   logins for automations that label under a person's PAT. A judge metric with
-   no way to be shown wrong does not belong in this domain — and grading one
-   model against a label another model applied is exactly that, dressed as a
-   number. The sample size travels with the percentage for the same reason.
+4. **The domain must grade itself, against a reference it cannot influence.**
+   Three metrics, all severity 0, and graduation needs all three graded:
+   - `judge.tier_agreement` — verdicts on a blind sample of labelled issues
+     against the **reference tier**: the maintainer's own label where one
+     exists, else a label applied by a **reference actor** — the frontier-model
+     labelling pass named in `JUDGE_REFERENCE_ACTORS`.
+   - `judge.tier_agreement_human` — the same, against labels a **human** applied
+     only. A GitHub App is excluded by actor type; `JUDGE_CALIBRATION_EXCLUDE`
+     names logins for automations that label under a person's PAT.
+   - `judge.reference_agreement` — the reference actor against the maintainer:
+     of the tiers it applied that a human reviewed, how many stood. Overriding
+     with a severity label is one review; applying `triaged` is the other.
+   Grading one model against a label another model applied is two models
+   agreeing, dressed as a number — *unless* that other model is itself graded
+   against the maintainer, which is what the third metric is for. Any
+   automation not named as a reference actor is ground truth for nothing. A
+   judge metric with no way to be shown wrong does not belong in this domain,
+   and the sample size travels with every percentage for the same reason.
 5. **Deleting every `judge.*` row must change no other value.** This is the test
    of the whole ADR. If dropping the domain would move a score, an alert or a
    digest line, the domain has stopped being advisory.
@@ -122,8 +134,41 @@ Raising it above severity 0 requires a new ADR.
   tiered* — and so not worth proposing a tier for — ignores who applied the
   label: `issues.flagged` sees a `p1` whoever put it there. Rule 4 is about
   ground truth, not about which issues the judge reads.
-- This portfolio has an agent labelling pass, so the human-labelled sample can
-  be small or empty. That is reported (`no human-labelled issues to compare
+- An empty sample is reported as such (`no human-labelled issues to compare
   against`, plus a note counting the exclusions) rather than smoothed over: an
   ungradeable judge must look ungraded, because the alternative is a confident
   number that graduated the domain on nothing.
+
+## Amendment: the calibration chain (2026-09-18)
+
+The original rule 4 admitted only human-applied labels as ground truth. On this
+portfolio that starved the gate: 220 open issues, 2 with a severity label, both
+applied by the weekly labelling routine. Hand-labelling enough issues to grade
+the judge would have taken weeks and produced tens of samples; the routine
+labels hundreds.
+
+The routine is a frontier model with the maintainer's priorities in its prompt.
+Its tiers are not the maintainer's, but they are *close* in a way that can be
+measured — which is the whole difference. So the reference is now a chain, each
+link graded against the one above it:
+
+1. **The maintainer** reviews the routine's tiers. Not from scratch: the Friday
+   report lists every label it applied, and agree/disagree on that list is a
+   few minutes. Agreement is recorded with a `triaged` label; disagreement by
+   applying the right severity label, which wins.
+2. **The routine** (`JUDGE_REFERENCE_ACTORS`) labels the bulk. It writes through
+   the Claude GitHub App, so its labels carry `Bot` provenance and are
+   distinguishable from the maintainer's.
+3. **The judge** is graded against the reference tier (1 where it exists, else
+   2), and separately against 1 alone.
+
+"The judge matches the maintainer X% of the time" is then a computable number —
+`judge.tier_agreement` bounded by `judge.reference_agreement` — instead of a
+number with an unmeasured link in it. And when the maintainer overrides the
+routine, the fix is a rule in the routine's prompt, which improves the reference
+for every future issue; hand labels never compounded like that.
+
+What does not change: the judge is still blind (labels never reach it), the
+domain is still severity 0, Ops still writes no label, and an automation that is
+not named as a reference actor still counts for nothing. Setting
+`JUDGE_REFERENCE_ACTORS` empty restores the original human-only rule exactly.

@@ -95,16 +95,21 @@ as separate truth.
 | `x_usage` | daily | `X_BEARER_TOKEN` | monthly post cap usage |
 | `cloudflare` | daily | `CLOUDFLARE_API_TOKEN`, `CF_ACCOUNT_ID` | Worker requests/errors, D1 size |
 | `manifests` | daily | `MARKETPLACE_REPO`, `GITHUB_PAT` | Claude Code plugin/skill inventory |
-| `judge` | daily | `TYPESAFE_API_KEY`, `GITHUB_PAT` | advisory issue tiering — `judge.issue_tier`, `judge.tier_agreement` |
+| `judge` | daily | `TYPESAFE_API_KEY`, `GITHUB_PAT` | advisory issue tiering — `judge.issue_tier`, `judge.tier_agreement`, `judge.tier_agreement_human`, `judge.reference_agreement` |
 
 The `judge` poller is the one that does not report a fact. It reads open issues
 that carry no severity label, asks [TypeSafe Jev](https://typesafe.ai) which
 label a maintainer would have applied, and records the answer at **severity 0**
 — visible on `/findings` and the repo's page, invisible to the triage score,
 push alerts and the digest. Acting on a proposal means applying the label in
-GitHub yourself, and `judge.tier_agreement` then grades how often the judge and
-the maintainer agreed — counting only labels a human applied, since grading one
-model against another's label measures agreement, not calibration. The rules that keep it advisory are
+GitHub yourself, and the judge is then graded on a blind sample: `judge.tier_agreement`
+against the reference tier (your own label, else one applied by the frontier-model
+labelling pass named in `JUDGE_REFERENCE_ACTORS`), `judge.tier_agreement_human`
+against your labels alone, and `judge.reference_agreement` grades that labelling
+pass against you — of its tiers you reviewed (overrode, or accepted with a
+`triaged` label), how many stood. Grading a model against an ungraded model's
+labels would measure agreement, not calibration; the chain is what makes the
+reference set legitimate. The rules that keep it advisory are
 [ADR-006](docs/adr/006-advisory-judge-signals.md). Issue text leaves your
 deployment when this poller runs; `JUDGE_SCOPE` bounds how much.
 
@@ -134,7 +139,8 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `CF_ACCOUNT_ID` | account whose Worker/D1 analytics to read |
 | `MARKETPLACE_REPO` | `owner/repo` of a plugin marketplace; omit to disable `manifests` |
 | `JUDGE_SCOPE` | how much issue text the `judge` poller may send to TypeSafe: `all`, `titles` (private repos contribute titles only), `public` (private repos are not judged) |
-| `JUDGE_CALIBRATION_EXCLUDE` | GitHub logins whose labels are not ground truth for `judge.tier_agreement` (for automations labelling under a person's PAT; GitHub Apps are excluded automatically) |
+| `JUDGE_CALIBRATION_EXCLUDE` | GitHub logins whose labels are not human ground truth (for automations labelling under a person's PAT; GitHub Apps are excluded automatically) |
+| `JUDGE_REFERENCE_ACTORS` | GitHub logins of the frontier-model labelling pass whose labels are reference ground truth for `judge.tier_agreement`, graded against you by `judge.reference_agreement`; empty means human labels only |
 
 **Secrets** (`wrangler secret put <NAME>`), all optional:
 

@@ -41,6 +41,11 @@
 		// for automations that label under a person's own PAT, which the API
 		// reports as that person. Empty means "trust every human-actor label".
 		"JUDGE_CALIBRATION_EXCLUDE": "",
+		// Comma-separated GitHub logins of the frontier-model labelling pass whose
+		// severity labels are reference ground truth for judge.tier_agreement (the
+		// Claude GitHub App here; "[bot]" suffix optional). It is graded against the
+		// maintainer in turn (judge.reference_agreement). Empty = human labels only.
+		"JUDGE_REFERENCE_ACTORS": "claude",
 		// Verify the Cloudflare Access assertion inside the Worker instead of trusting
 		// that the edge policy is present. Both must be set to enable it: the team name
 		// from <team>.cloudflareaccess.com, and the Access application's AUD tag
