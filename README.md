@@ -95,6 +95,17 @@ as separate truth.
 | `x_usage` | daily | `X_BEARER_TOKEN` | monthly post cap usage |
 | `cloudflare` | daily | `CLOUDFLARE_API_TOKEN`, `CF_ACCOUNT_ID` | Worker requests/errors, D1 size |
 | `manifests` | daily | `MARKETPLACE_REPO`, `GITHUB_PAT` | Claude Code plugin/skill inventory |
+| `judge` | daily | `JEV_API_KEY`, `GITHUB_PAT` | advisory issue tiering — `judge.issue_tier`, `judge.tier_agreement` |
+
+The `judge` poller is the one that does not report a fact. It reads open issues
+that carry no severity label, asks [TypeSafe Jev](https://typesafe.ai) which
+label a maintainer would have applied, and records the answer at **severity 0**
+— visible on `/findings` and the repo's page, invisible to the triage score,
+push alerts and the digest. Acting on a proposal means applying the label in
+GitHub yourself, and `judge.tier_agreement` then grades how often the judge and
+the maintainer agreed. The rules that keep it advisory are
+[ADR-006](docs/adr/006-advisory-judge-signals.md). Issue text leaves your
+deployment when this poller runs; `JUDGE_SCOPE` bounds how much.
 
 A poller whose credential is absent reports itself as **unconfigured** — a calm
 state listed on `/health` at low severity, distinct from a real failure and
@@ -121,6 +132,7 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `OPS_URL` | the deployment's own URL, used for notification deep links |
 | `CF_ACCOUNT_ID` | account whose Worker/D1 analytics to read |
 | `MARKETPLACE_REPO` | `owner/repo` of a plugin marketplace; omit to disable `manifests` |
+| `JUDGE_SCOPE` | how much issue text the `judge` poller may send to TypeSafe: `all`, `titles` (private repos contribute titles only), `public` (private repos are not judged) |
 
 **Secrets** (`wrangler secret put <NAME>`), all optional:
 
@@ -134,6 +146,7 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `CLOUDFLARE_API_TOKEN` | `cloudflare` — scope it read-only (Account Analytics:Read + D1:Read), never the Global key |
 | `INGEST_TOKEN` | `POST /ingest` — without it the endpoint returns 503 |
 | `DIGEST_TOKEN` | `GET /digest/md` — without it the endpoint returns 503 |
+| `JEV_API_KEY` | `judge` — advisory issue tiering via TypeSafe Jev |
 | `NTFY_URL` | push notifications for new high-severity findings, and the Friday digest |
 | `NTFY_TOKEN` | auth for a protected ntfy topic |
 

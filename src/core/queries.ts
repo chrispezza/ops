@@ -1,3 +1,5 @@
+import { ADVISORY_DOMAINS } from "../config";
+
 // The only module that knows the two metric semantics (spec §2.2):
 // state metrics → latest signal per (entity, metric); interval metrics → sums over period windows.
 // "Latest" reads go through signal_latest (ADR-005), a pointer table kept in
@@ -269,14 +271,20 @@ export interface FindingRow extends SignalRow {
 }
 
 // The cross-cutting audit lens (spec §4.4): latest signals across every entity
-// with severity >= min, plus all audit.* and hygiene.* hits regardless of
-// severity. A filter, not a domain — new audit sources appear with no changes.
+// with severity >= min, plus every ADVISORY_DOMAINS hit and every hygiene.* hit
+// regardless of severity. A filter, not a domain — new audit sources appear
+// with no changes. The advisory prefixes are bound as parameters rather than
+// interpolated, so adding a domain to that list can never become an injection.
 export async function findings(
   db: D1Database,
   opts: { minSeverity: number; domain?: string; category?: string; sort?: string },
 ): Promise<FindingRow[]> {
-  const conditions = ["(s.severity >= ?1 OR s.metric LIKE 'audit.%' OR (s.metric LIKE 'hygiene.%' AND s.severity > 0))"];
   const params: (string | number)[] = [opts.minSeverity];
+  const advisory = ADVISORY_DOMAINS.map((d) => {
+    params.push(`${d}.%`);
+    return `s.metric LIKE ?${params.length}`;
+  }).join(" OR ");
+  const conditions = [`(s.severity >= ?1 OR ${advisory} OR (s.metric LIKE 'hygiene.%' AND s.severity > 0))`];
   if (opts.domain) {
     params.push(`${opts.domain}.%`);
     conditions.push(`s.metric LIKE ?${params.length}`);

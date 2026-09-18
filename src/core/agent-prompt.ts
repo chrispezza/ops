@@ -93,6 +93,16 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     findings.push(`- ${flagged?.value_num} issue(s) labeled for attention, worst first: ${flagged?.value_text ?? ""}${link(flagged)}`);
     done.push("- every labeled issue is fixed, or closed with a reason (ops signal: issues.flagged = 0)");
   }
+  // Advisory only (ADR-006): the judge proposes a label, it does not tier. It
+  // sits below the maintainer's own labels on purpose, and it deliberately gets
+  // no done-criterion — "judge.issue_tier = 0" would read as an instruction to
+  // label whatever the model flagged, which is the one thing this must not do.
+  const proposed = by("judge.issue_tier");
+  if ((proposed?.value_num ?? 0) > 0) {
+    findings.push(
+      `- ${proposed?.value_num} unlabeled issue(s) an advisory model would tier p1 or worse: ${proposed?.value_text ?? ""}${link(proposed)} — a suggestion with a confidence score, not a verdict: read each issue yourself, then label it in GitHub or leave it unlabeled`,
+    );
+  }
   const issues = by("issues.open");
   const idle = by("issues.idle_90d");
   const fresh = by("issues.new_7d");

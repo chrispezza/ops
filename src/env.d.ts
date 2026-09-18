@@ -10,6 +10,7 @@ interface Env {
   DIGEST_TOKEN?: string;
   NTFY_URL?: string;
   NTFY_TOKEN?: string;
+  JEV_API_KEY?: string;
 }
 
 declare namespace Cloudflare {
@@ -23,5 +24,6 @@ declare namespace Cloudflare {
     DIGEST_TOKEN?: string;
     NTFY_URL?: string;
     NTFY_TOKEN?: string;
+    JEV_API_KEY?: string;
   }
 }

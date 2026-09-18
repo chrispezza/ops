@@ -608,8 +608,14 @@ export default {
       return;
     }
     const isDaily = event.cron === DAILY_CRON;
+    // The retention sweep runs FIRST on the daily cron. It only ever touches
+    // rows older than the retention window, so the day's fresh inserts are
+    // irrelevant to it — but runPollers awaits each poller in turn, and the
+    // judge poller waits on a third-party model API. Sweeping first means an
+    // upstream that is slow or hanging can cost that day's advisory verdicts
+    // without also costing the compaction that keeps D1 reads bounded.
+    if (isDaily) await compactSignals(env.DB, now);
     await runPollers(env, isDaily ? "daily" : "hourly", { now });
     await derivePass(env, now);
-    if (isDaily) await compactSignals(env.DB, now); // retention sweep rides the daily cron
   },
 } satisfies ExportedHandler<Env>;
