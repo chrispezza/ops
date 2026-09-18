@@ -29,6 +29,13 @@ Local seeding: `wrangler d1 migrations apply ops --local`, put
 `INGEST_TOKEN=dev-token` in `.dev.vars`, POST the payload from the README to
 `http://localhost:8787/ingest`. `.dev.vars` is gitignored; never commit it.
 
+D1 bills rows written account-wide against a daily allowance (100k on the free
+tier; [ADR-007](docs/adr/007-d1-row-write-budget.md) has the measured costs).
+A migration that creates an index over `signals` writes one row per existing
+row — 0004 wrote 117,983 and spent 2026-09-18's allowance before 02:00 UTC. A
+PR adding an index or a column to `signals` states that cost, and on the free
+tier the migration is applied right after 00:00 UTC with nothing else that day.
+
 ## Architecture invariants (do not violate without a new ADR)
 
 - **Read here, act there** ([ADR-001](docs/adr/001-read-mostly-system-of-record.md)).

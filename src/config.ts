@@ -96,6 +96,7 @@ export const METRIC_LABELS: Record<string, string> = {
   "d1.rows_read": "rows read",
   "d1.rows_written": "rows written",
   "d1.read_cap_pct": "D1 daily read allowance used",
+  "d1.write_cap_pct": "D1 daily write allowance used",
   "docs.score": "docs health",
 };
 

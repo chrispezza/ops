@@ -149,6 +149,7 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `JUDGE_SCOPE` | how much issue text the `judge` poller may send to TypeSafe: `all`, `titles` (private repos contribute titles only), `public` (private repos are not judged) |
 | `JUDGE_CALIBRATION_EXCLUDE` | GitHub logins whose labels are not human ground truth (for automations labelling under a person's PAT; GitHub Apps are excluded automatically) |
 | `JUDGE_REFERENCE_ACTORS` | GitHub logins of the frontier-model labelling pass whose labels are reference ground truth for `judge.tier_agreement`, graded against you by `judge.reference_agreement`; empty means human labels only |
+| `D1_ROW_READS_PER_DAY`, `D1_ROW_WRITES_PER_DAY` | the allowances `d1.read_cap_pct` / `d1.write_cap_pct` are judged against; empty means the Workers Free daily caps (5M / 100k). On Workers Paid, set the monthly figures ÷ 30 ([ADR-007](docs/adr/007-d1-row-write-budget.md)) |
 
 **Secrets** (`wrangler secret put <NAME>`), all optional:
 

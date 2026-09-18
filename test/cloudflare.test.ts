@@ -5,7 +5,15 @@ import { cloudflare } from "../src/pollers/cloudflare";
 
 const NOW = Math.floor(Date.now() / 1000);
 const noCtx = { listEntities: async () => [] };
-const cfEnv = { ...env, CLOUDFLARE_API_TOKEN: "cf-test-token", CF_ACCOUNT_ID: "acct123" } as unknown as Env;
+// Allowances left empty: the tests assert against the free-tier caps whatever
+// wrangler.jsonc says this deployment is on.
+const cfEnv = {
+  ...env,
+  CLOUDFLARE_API_TOKEN: "cf-test-token",
+  CF_ACCOUNT_ID: "acct123",
+  D1_ROW_READS_PER_DAY: "",
+  D1_ROW_WRITES_PER_DAY: "",
+} as unknown as Env;
 
 beforeEach(async () => {
   await env.DB.batch([env.DB.prepare("DELETE FROM signals"), env.DB.prepare("DELETE FROM entities")]);
@@ -167,6 +175,31 @@ describe("cloudflare poller", () => {
     expect(cap?.valueNum).toBe(118.7); // (5,829,841 + 105,487) / 5,000,000
     expect(cap?.severity).toBe(3);
     expect(cap?.valueText).toBe(`5.94M of 5.00M rows read on ${day(1)} · ops 5.83M, pantry-intel 105k`);
+
+    // Writes are judged the same way against their own, smaller allowance.
+    const writes = result.signals.find((s) => s.metric === "d1.write_cap_pct");
+    expect(writes?.entityId).toBe("cf:account");
+    expect(writes?.valueNum).toBe(53.7); // 53,703 / 100,000; pantry-intel wrote nothing
+    expect(writes?.severity).toBe(0);
+    expect(writes?.valueText).toBe(`54k of 100k rows written on ${day(1)} · ops 54k, pantry-intel 0`);
+  });
+
+  it("rates D1 row writes against the daily write allowance (ADR-007)", async () => {
+    // 2026-09-18: a migration's index build over the signals table wrote one
+    // row per existing row and spent the day's allowance before 02:00 UTC.
+    stubCf([{ date: day(1), status: "success", requests: 100 }], [{ date: day(1), rowsRead: 1_861_015, rowsWritten: 132_164 }]);
+    let cap = (await cloudflare.poll(cfEnv, noCtx)).signals.find((s) => s.metric === "d1.write_cap_pct");
+    expect(cap).toMatchObject({ valueNum: 132.2, severity: 3 });
+    expect(cap?.valueText).toBe(`132k of 100k rows written on ${day(1)} · ops 132k`);
+
+    // Steady state after 0005 sits in the warning band; a clean day before it did not.
+    stubCf([{ date: day(1), status: "success", requests: 100 }], [{ date: day(1), rowsRead: 4_931_499, rowsWritten: 81_400 }]);
+    cap = (await cloudflare.poll(cfEnv, noCtx)).signals.find((s) => s.metric === "d1.write_cap_pct");
+    expect(cap).toMatchObject({ valueNum: 81.4, severity: 2 });
+
+    stubCf([{ date: day(1), status: "success", requests: 100 }], [{ date: day(1), rowsRead: 4_931_499, rowsWritten: 74_059 }]);
+    cap = (await cloudflare.poll(cfEnv, noCtx)).signals.find((s) => s.metric === "d1.write_cap_pct");
+    expect(cap).toMatchObject({ valueNum: 74.1, severity: 0 });
   });
 
   it("warns at 80% of the D1 allowance and stays calm below it", async () => {
