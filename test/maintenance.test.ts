@@ -72,6 +72,31 @@ describe("signal compaction (issue #4)", () => {
     ).first<{ value_num: number }>();
     expect(ptr?.value_num).toBe(2);
   });
+
+  // The 2026-09-12..17 outages: signal_latest.signal_id is a foreign key onto
+  // signals(id), so every row the sweep deletes makes SQLite look for children.
+  // Unindexed, that lookup is a full scan of signal_latest per deleted row
+  // (~10k deletes x ~450 pointers = ~4.5M rows read at 10:00 UTC, daily).
+  it("does not scan signal_latest once per deleted signal row", async () => {
+    const POINTERS = 200;
+    const ids = Array.from({ length: POINTERS }, (_, i) => `repo:a/r${i}`);
+    await upsertEntities(env.DB, ids.map((id) => ({ id, kind: "repo", name: id })), NOW);
+    await insertSignals(
+      env.DB,
+      "github",
+      ids.map((entityId) => ({ entityId, metric: "issues.open", valueNum: 1, observedAt: NOW, dedupeKey: String(NOW) })),
+    );
+    const oldDay = NOW - 40 * DAY - ((NOW - 40 * DAY) % DAY);
+    await insertSignals(env.DB, "github", [
+      { entityId: "repo:a/r0", metric: "issues.open", valueNum: 0, observedAt: oldDay, dedupeKey: String(oldDay) },
+    ]);
+
+    const result = await env.DB.prepare("DELETE FROM signals WHERE entity_id = 'repo:a/r0' AND observed_at = ?1")
+      .bind(oldDay)
+      .run();
+    expect(result.meta.changes).toBe(1);
+    expect(result.meta.rows_read).toBeLessThan(POINTERS / 4);
+  });
 });
 
 describe("kind-scoped budget bars (issue #7)", () => {

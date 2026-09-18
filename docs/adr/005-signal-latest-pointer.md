@@ -36,7 +36,7 @@ Measured on 2026-09-02 (issue #42): ~200k rows read per request; 5–6M rows/day
 Option 3. `signal_latest` is an **index over signals**, not state: it holds a row id and the `observed_at` needed to compare candidates, nothing a reader displays. Rules:
 
 - After each signal upsert, refresh the pointer from the row found by its `UNIQUE(entity_id, metric, dedupe_key)` key — two index seeks per signal regardless of history depth. The pointer advances when the row is newer (`observed_at`, then `id` as tie-break) or when it *is* the pointed row (a fixed-dedupe row re-observed in place, the hygiene/budget/balance pattern).
-- `signal_id` cascades on delete. Retention (`compactSignals`) keeps the newest row per (entity, metric, day), so the overall newest row is never deleted and the pointer survives compaction by construction; the cascade exists for test resets and manual repair, not for the sweep.
+- `signal_id` cascades on delete. Retention (`compactSignals`) keeps the newest row per (entity, metric, day), so the overall newest row is never deleted and the pointer survives compaction by construction; the cascade exists for test resets and manual repair, not for the sweep. The sweep still pays for it: every deleted signals row makes SQLite look for child pointers, so `signal_id` must stay indexed (migration 0005). Unindexed, that lookup scanned the whole table per deleted row and spent the account's daily D1 read allowance in one statement (2026-09-12 to 09-17). The index costs one extra row written per pointer move.
 - Readers that need a *filtered* latest (last successful poller run) still walk history, now confined to one metric's rows by a metric-leading index.
 - Migration 0003 backfills the table with one final window scan.
 
