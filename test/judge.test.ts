@@ -26,7 +26,10 @@ const ctxOf = (entities: KnownEntity[]) => ({ listEntities: async () => entities
 // human, so a fixture reads as "the maintainer labelled this" unless it says
 // otherwise.
 const HUMAN = { login: "chrispezza", __typename: "User" };
+// wrangler.jsonc names "claude" as the reference actor; GraphQL spells the App
+// without the [bot] suffix, REST with it, and both must match.
 const CLAUDE_APP = { login: "claude[bot]", __typename: "Bot" };
+const OTHER_BOT = { login: "dependabot", __typename: "Bot" };
 
 const issue = (
   number: number,
@@ -124,10 +127,32 @@ describe("judge poller", () => {
 
     const agreement = signalFor(result, "judge.tier_agreement");
     expect(agreement?.valueNum).toBe(50);
-    expect(agreement?.valueText).toBe("1 of 2 exact · 2 within one tier · human-labelled sample");
+    expect(agreement?.valueText).toBe("1 of 2 exact · 2 within one tier · 2 human-labelled, 0 reference-labelled");
+    const human = signalFor(result, "judge.tier_agreement_human");
+    expect(human?.valueNum).toBe(50);
+    expect(human?.valueText).toBe("1 of 2 exact · 2 within one tier · human-labelled sample");
   });
 
-  it("refuses to grade itself against labels an automation applied", async () => {
+  it("refuses to grade itself against labels an unnamed automation applied", async () => {
+    stubUpstreams({
+      issues: [
+        issue(12, "data loss on sync", ["p0"], "detail", OTHER_BOT),
+        issue(13, "button misaligned", ["p2"], "detail", OTHER_BOT),
+      ],
+      scores: { 12: { score: 3, confidence: 0.9 }, 13: { score: 1, confidence: 0.9 } },
+    });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+    // Both labels came from a bot that is not a reference actor. Agreeing with
+    // them would be two models agreeing, so there is no number to report.
+    const agreement = signalFor(result, "judge.tier_agreement");
+    expect(agreement?.valueNum).toBeUndefined();
+    expect(agreement?.valueText).toBe("no human- or reference-labelled issues to compare against");
+    expect(signalFor(result, "judge.tier_agreement_human")?.valueNum).toBeUndefined();
+    expect(result.notes?.join(" ")).toContain("2 issue(s) excluded from calibration");
+  });
+
+  it("grades itself against the reference actor's labels and says which kind it had", async () => {
     stubUpstreams({
       issues: [
         issue(12, "data loss on sync", ["p0"], "detail", CLAUDE_APP),
@@ -137,12 +162,76 @@ describe("judge poller", () => {
     });
     const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
 
-    // Both labels came from the Claude GitHub App. Agreeing with them would be
-    // two models agreeing, so there is no number to report.
     const agreement = signalFor(result, "judge.tier_agreement");
-    expect(agreement?.valueNum).toBeUndefined();
-    expect(agreement?.valueText).toBe("no human-labelled issues to compare against");
-    expect(result.notes?.join(" ")).toContain("2 issue(s) excluded from calibration");
+    expect(agreement?.valueNum).toBe(100);
+    expect(agreement?.valueText).toBe("2 of 2 exact · 2 within one tier · 0 human-labelled, 2 reference-labelled");
+    // The human-only metric stays honest: nothing here came from a person.
+    const human = signalFor(result, "judge.tier_agreement_human");
+    expect(human?.valueNum).toBeUndefined();
+    expect(human?.valueText).toBe("no human-labelled issues to compare against");
+    // Neither reference tier has been reviewed, so the reference is ungraded too.
+    const reference = signalFor(result, "judge.reference_agreement");
+    expect(reference?.valueNum).toBeUndefined();
+    expect(reference?.valueText).toBe("no reference tiers reviewed yet");
+  });
+
+  it("lets a human override win over the reference tier, and counts it against the reference", async () => {
+    const overridden = {
+      ...issue(14, "silent deploy stop", ["p2", "p1"]),
+      timelineItems: {
+        nodes: [
+          { label: { name: "p2" }, actor: CLAUDE_APP },
+          { label: { name: "p1" }, actor: HUMAN },
+        ],
+      },
+    };
+    stubUpstreams({ issues: [overridden], scores: { 14: { score: 2, confidence: 0.9 } } });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+    // Ground truth is the human's p1 (severity 2); the judge said 2 — exact.
+    expect(signalFor(result, "judge.tier_agreement")?.valueText).toBe(
+      "1 of 1 exact · 1 within one tier · 1 human-labelled, 0 reference-labelled",
+    );
+    const reference = signalFor(result, "judge.reference_agreement");
+    expect(reference?.valueNum).toBe(0);
+    expect(reference?.valueText).toBe("0 of 1 reviewed reference tiers stood · 1 overridden");
+  });
+
+  it("treats a human `triaged` label as accepting the reference tier", async () => {
+    const accepted = {
+      ...issue(15, "reviewed and left standing", ["p1", "triaged"]),
+      timelineItems: {
+        nodes: [
+          { label: { name: "p1" }, actor: CLAUDE_APP },
+          { label: { name: "triaged" }, actor: HUMAN },
+        ],
+      },
+    };
+    stubUpstreams({ issues: [accepted], scores: { 15: { score: 1, confidence: 0.9 } } });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+    const reference = signalFor(result, "judge.reference_agreement");
+    expect(reference?.valueNum).toBe(100);
+    expect(reference?.valueText).toBe("1 of 1 reviewed reference tiers stood · 0 overridden");
+    // `triaged` is not a severity label, so the truth is still the reference's p1
+    // and the judge's p2 verdict is one tier off.
+    expect(signalFor(result, "judge.tier_agreement")?.valueText).toBe(
+      "0 of 1 exact · 1 within one tier · 0 human-labelled, 1 reference-labelled",
+    );
+  });
+
+  it("restores the human-only rule exactly when JUDGE_REFERENCE_ACTORS is empty", async () => {
+    stubUpstreams({
+      issues: [issue(16, "data loss on sync", ["p0"], "detail", CLAUDE_APP)],
+      scores: { 16: { score: 3, confidence: 0.9 } },
+    });
+    const result = await judge.poll(
+      { ...env, ...KEY, JUDGE_REFERENCE_ACTORS: "" } as unknown as Env,
+      ctxOf([repo()]),
+    );
+    expect(signalFor(result, "judge.tier_agreement")?.valueNum).toBeUndefined();
+    expect(signalFor(result, "judge.reference_agreement")).toBeUndefined();
+    expect(result.notes?.join(" ")).toContain("JUDGE_REFERENCE_ACTORS unset");
   });
 
   it("still treats an automation-labelled issue as tiered, so it gets no proposal", async () => {
@@ -166,6 +255,7 @@ describe("judge poller", () => {
       ctxOf([repo()]),
     );
     expect(signalFor(result, "judge.tier_agreement")?.valueNum).toBeUndefined();
+    expect(signalFor(result, "judge.tier_agreement_human")?.valueNum).toBeUndefined();
   });
 
   it("ignores a severity label that was applied and later removed", async () => {

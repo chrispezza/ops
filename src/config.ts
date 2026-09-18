@@ -52,6 +52,8 @@ export const METRIC_LABELS: Record<string, string> = {
   "issues.flagged": "flagged issues",
   "judge.issue_tier": "proposed issue tiers",
   "judge.tier_agreement": "tier agreement",
+  "judge.tier_agreement_human": "tier agreement (human)",
+  "judge.reference_agreement": "reference tiers accepted",
   "repo.pushed_at": "last push",
   "repo.branches": "branches",
   "release.age_days": "release age",
