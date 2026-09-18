@@ -11,9 +11,10 @@ pagefind: true
 
 ## Status
 
-Accepted. Amended 2026-09-18: rule 4 now grades against a reference chain
+Accepted. Amended 2026-09-18 twice: rule 4 now grades against a reference chain
 (maintainer → frontier labelling pass → judge) instead of maintainer labels
-alone; see "Amendment: the calibration chain" below.
+alone, and an issue is now judged once rather than re-judged nightly; see the
+two amendments below.
 
 ## Context
 
@@ -112,17 +113,20 @@ Raising it above severity 0 requires a new ADR.
 ## Consequences
 
 - The judge poller runs daily, not hourly: verdicts are nondeterministic and
-  cost a model call, so re-judging every hour would buy churn. It also cannot
-  cache — pollers get `listEntities` and nothing else — so a daily cadence is
-  what makes re-judging from scratch affordable.
+  cost a model call, so re-judging every hour would buy churn. An issue is
+  judged once (see "Amendment: an issue is judged once"), so in the steady
+  state a nightly run costs a call only for what opened that day.
 - The retention sweep moved ahead of the poller pass on the daily cron
   (`src/index.tsx`). `runPollers` awaits pollers in turn, and this is the first
   poller whose upstream is a model API; compaction keeps D1 reads bounded and
   must not queue behind it.
 - Per-repo failures are coverage notes (calm severity 1 on `/health`), because
-  an advisory feature should not redden the dashboard. A run where *no* repo
-  could be judged still throws: otherwise `poller.last_ok` marches forward while
-  nothing is being judged, which reads as healthy.
+  an advisory feature should not redden the dashboard. Two total failures still
+  throw, or `poller.last_ok` would march forward while nothing is being judged:
+  no repo could be read at all, and no verdict came back although some repo had
+  issues to judge. A run that asked for nothing *because* everything is already
+  judged is not a failure — it is what this poller looks like in the steady
+  state.
 - Issue text leaves the deployment. `JUDGE_SCOPE` (`wrangler.jsonc`) bounds how
   much: `all`, `titles` (private repos contribute titles only), or `public`
   (private repos are not judged). TypeSafe states it does not train on user
@@ -172,3 +176,83 @@ What does not change: the judge is still blind (labels never reach it), the
 domain is still severity 0, Ops still writes no label, and an automation that is
 not named as a reference actor still counts for nothing. Setting
 `JUDGE_REFERENCE_ACTORS` empty restores the original human-only rule exactly.
+
+## Amendment: an issue is judged once (2026-09-18)
+
+As first shipped, the poller re-judged every untiered open issue on every run,
+forever. It had no way not to: a poller gets `listEntities` and nothing else, so
+it could not tell what it had already asked, and an issue left the judged set
+only when a human labelled it. On this portfolio that is ~220 issues a night in
+perpetuity — and it never shrinks, because the whole point of the domain is the
+issues nobody has got to yet.
+
+The binding constraint is not the model's price, which is negligible. It is the
+1000 subrequests a Workers invocation gets, which this poller shares with every
+other daily poller. Shrinking the caps to fit under that ceiling would have
+treated the symptom.
+
+So the poller now remembers, per repo, a **judged span** — every open issue
+numbered `low..high` that carried no severity label at the time has been judged
+— and the **outstanding proposals** it has not seen acted on. Both live in the
+metadata of its own `poller:judge` entity: `EntityUpsert.metadata` writes it and
+`ctx.listEntities` reads it back, so this needs no new contract surface, no
+schema change, and no widening of "pollers never touch D1". `recordPollerStatus`
+upserts the same entity without metadata, and the entity upsert coalesces a null,
+so the runner's own write cannot clobber it.
+
+Three things follow, and each is a rule:
+
+1. **New issues extend the span upward, the backlog downward, and a cap never
+   leaves a hole.** New issues are taken ascending from the top of the span and
+   the backlog descending from its bottom, so whatever a cap or the run-wide
+   budget cuts off leaves the span contiguous. An issue with no usable verdict
+   is not in the span, so a failed call is retried rather than skipped forever.
+2. **`judge.issue_tier` counts outstanding proposals, not this run's.** It is a
+   `state` metric (ADR-002) and has to keep meaning "untiered issues the judge
+   thinks need attention". Counting only what was judged last night would read
+   as an empty backlog on the very night the backlog is largest. A proposal
+   drops off when the issue is tiered for real, or is gone from the open set —
+   but only where the run read far enough to know that.
+3. **Calibration keeps re-judging.** `judge.tier_agreement` and its siblings
+   measure the model, not the issue, so a fresh sample every run is the point.
+   The sample is small, takes every human-labelled issue (they are the scarce
+   ground truth) and rotates its reference-labelled fill by day.
+
+Two limits are accepted rather than fixed, both tolerable for an advisory
+signal and both recorded here so they are not rediscovered as bugs: an issue
+whose severity label is later *removed* stays inside the span and is not
+re-proposed, and an issue closed during a pass and reopened later is inside the
+span without ever having been judged.
+
+This is poller working state — what it has already asked — not a derived view of
+stored signals, so it does not contradict the rule that derived things are
+computed on each pass rather than stored. The signals remain the published truth;
+delete the metadata and the poller re-judges from scratch, which is exactly the
+behaviour this amendment replaced.
+
+## Amendment: Choice, and one issue per request (2026-09-18)
+
+Two corrections to how the poller calls Jev, both from the vendor's own
+documented weaknesses for `jev-1.13`.
+
+**One issue per request.** The first implementation packed twenty unrelated
+issues into a single `state` and asked twenty questions against it, on a reading
+of "batch questions per request" that turned out to be backwards: the docs mean
+many questions about *one* subject. They also say plainly that accuracy falls as
+the state grows, that unrelated detail acts as a distractor, and that the fix is
+to filter in code and send only the fields the question needs. Nineteen other
+people's bug reports next to the issue being tiered is that failure mode exactly.
+The cost is subrequests, which is what the judge-once amendment above pays for.
+
+**Choice, not Score.** The tiers are four named labels, which is what Choice is
+for; Score is for a position on a spectrum, and `jev-1.13`'s documented weakness
+is numerical calibration between score levels. Choice returns the option name
+and a distribution over the options, so nothing is lost, and the
+fractional-score-to-index rounding step goes away. Ordinality is still
+load-bearing in one place — `within one tier` compares indices — and the option
+order supplies it.
+
+The options are objects rather than strings, carrying what each tier is, what it
+is *not* for, and examples. Jev has no fine-tuning: no training endpoint, no
+few-shot parameter. The rubric is the only lever there is, and structured
+options are the documented way to pull it.

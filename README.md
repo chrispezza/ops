@@ -113,6 +113,14 @@ reference set legitimate. The rules that keep it advisory are
 [ADR-006](docs/adr/006-advisory-judge-signals.md). Issue text leaves your
 deployment when this poller runs; `JUDGE_SCOPE` bounds how much.
 
+Each issue is judged **once**. The poller remembers which issues it has already
+asked about and what it is still proposing, so the first few nights after you
+enable it work through your existing backlog a page at a time — `/health` says
+how much is left — and after that a run costs a model call only for issues
+opened that day. The calibration sample is the deliberate exception: it
+re-judges a small rotating sample every run, because it measures the model
+rather than the issue.
+
 A poller whose credential is absent reports itself as **unconfigured** — a calm
 state listed on `/health` at low severity, distinct from a real failure and
 deliberately not enough to trip the degradation banner. So you can start with
