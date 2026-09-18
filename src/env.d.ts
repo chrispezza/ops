@@ -10,6 +10,9 @@ interface Env {
   DIGEST_TOKEN?: string;
   NTFY_URL?: string;
   NTFY_TOKEN?: string;
+  // TypeSafe is the vendor; Jev is the model it serves. Named for the vendor
+  // like every other credential here, so a second TypeSafe model needs no rename.
+  TYPESAFE_API_KEY?: string;
 }
 
 declare namespace Cloudflare {
@@ -23,5 +26,6 @@ declare namespace Cloudflare {
     DIGEST_TOKEN?: string;
     NTFY_URL?: string;
     NTFY_TOKEN?: string;
+    TYPESAFE_API_KEY?: string;
   }
 }

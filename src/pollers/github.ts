@@ -1,5 +1,14 @@
 import type { EntityUpsert, Poller, PollerResult, SignalInsert } from "./types";
 
+// Fine-grained PATs are scoped to one resource owner. GITHUB_PAT_<OWNER>
+// (uppercased, non-alphanumerics -> "_") overrides GITHUB_PAT per owner.
+// Exported because the judge poller reads the same repos under the same tokens
+// — two copies of this lookup would drift the moment one owner gets its own PAT.
+export function tokenForOwner(env: Env, owner: string): string | undefined {
+  const key = `GITHUB_PAT_${owner.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+  return (env as unknown as Record<string, string | undefined>)[key] ?? env.GITHUB_PAT;
+}
+
 // Spec §2.4: classification lives in the system of record — GitHub topics.
 const TOPIC_CATEGORY: Record<string, string> = {
   "static-site": "static_site",
@@ -18,7 +27,7 @@ const TOPIC_CATEGORY: Record<string, string> = {
 // Matched case-insensitively; unknown labels carry no severity. Ops never
 // writes labels (ADR-001) — the weekly agent pass is where unlabeled issues
 // get read and labeled.
-const LABEL_SEVERITY: Record<string, 1 | 2 | 3> = {
+export const LABEL_SEVERITY: Record<string, 1 | 2 | 3> = {
   security: 3,
   p0: 3,
   critical: 3,
@@ -245,13 +254,6 @@ export const github: Poller = {
     const owners = (env.GITHUB_OWNERS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     if (owners.length === 0) throw new Error("github: GITHUB_OWNERS is not configured");
 
-    // Fine-grained PATs are scoped to one resource owner. GITHUB_PAT_<OWNER>
-    // (uppercased, non-alphanumerics -> "_") overrides GITHUB_PAT per owner.
-    const tokenFor = (owner: string): string | undefined => {
-      const key = `GITHUB_PAT_${owner.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
-      return (env as unknown as Record<string, string | undefined>)[key] ?? env.GITHUB_PAT;
-    };
-
     const now = Math.floor(Date.now() / 1000);
     // Spec §2.3: state-count metrics dedupe on observed_at bucketed to poll granularity.
     const hourBucket = String(now - (now % 3600));
@@ -260,7 +262,7 @@ export const github: Poller = {
     const notes: string[] = [];
 
     for (const owner of owners) {
-      const pat = tokenFor(owner);
+      const pat = tokenForOwner(env, owner);
       if (!pat) throw new Error(`github: no PAT for owner ${owner} (set GITHUB_PAT or a per-owner secret)`);
       for await (const repo of fetchRepos(pat, owner)) {
         // An upstream-archived repo is marked archived here too — the entity

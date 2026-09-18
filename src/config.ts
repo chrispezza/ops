@@ -25,6 +25,14 @@ export const EXPECTED_METRICS: Record<string, string[]> = {
 // level 0) — the dot's aria-label and the triage "why" labels must agree.
 export const SEVERITY_NAMES = ["ok", "low", "medium", "high", "critical"] as const;
 
+// Domains that stay visible on /findings whatever their severity. An advisory
+// lens sits at low or zero severity by design (audit.* reports every finding it
+// has; judge.* is pinned at 0 by ADR-006), so the page's severity floor would
+// hide the whole domain rather than filter within it. hygiene.* is deliberately
+// not in this list: it keeps its own "> 0" floor, because a hygiene check that
+// passes is not a finding.
+export const ADVISORY_DOMAINS = ["audit", "judge"] as const;
+
 // Display names for metric codes. Codes stay the storage/query contract
 // (ADR-002); labels are presentation config. Unknown metrics fall back to
 // their raw code so new ingest domains render without code changes.
@@ -42,6 +50,8 @@ export const METRIC_LABELS: Record<string, string> = {
   "issues.new_7d": "new issues 7d",
   "issues.oldest_days": "oldest issue",
   "issues.flagged": "flagged issues",
+  "judge.issue_tier": "proposed issue tiers",
+  "judge.tier_agreement": "tier agreement",
   "repo.pushed_at": "last push",
   "repo.branches": "branches",
   "release.age_days": "release age",
