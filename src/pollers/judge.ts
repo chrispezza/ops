@@ -51,11 +51,18 @@ const unlabeledQuery = () =>
   `is:issue is:open ${severityLabels().map((l) => `-label:${l}`).join(" ")} sort:created-desc`;
 const labeledQuery = () => `is:issue is:open label:${severityLabels().join(",")}`;
 
+interface LabeledEvent {
+  label?: { name: string };
+  // null when the actor's account is gone; __typename is "Bot" for a GitHub App.
+  actor?: { login: string; __typename: string } | null;
+}
+
 interface IssueNode {
   number: number;
   title: string;
   body: string | null;
   labels?: { nodes: { name: string }[] };
+  timelineItems?: { nodes: (LabeledEvent | Record<string, never>)[] };
 }
 
 interface RepoIssuesPage {
@@ -80,6 +87,19 @@ const ISSUES_QUERY = /* GraphQL */ `
           labels(first: 20) {
             nodes {
               name
+            }
+          }
+          timelineItems(itemTypes: [LABELED_EVENT], first: 50) {
+            nodes {
+              ... on LabeledEvent {
+                label {
+                  name
+                }
+                actor {
+                  login
+                  __typename
+                }
+              }
             }
           }
         }
@@ -109,11 +129,40 @@ async function fetchIssues(pat: string, owner: string, name: string): Promise<{ 
 }
 
 // The severity github.ts would assign this issue from its labels, or null when
-// it carries none that LABEL_SEVERITY recognises.
+// it carries none that LABEL_SEVERITY recognises. Provenance is deliberately
+// ignored here: this decides whether an issue is ALREADY tiered, and an issue
+// carrying p1 is tiered — issues.flagged sees it — whoever applied the label.
+// Proposing a tier for it again would be noise.
 export function labelSeverity(issue: IssueNode): number | null {
   const graded = (issue.labels?.nodes ?? [])
     .map((l) => LABEL_SEVERITY[l.name.toLowerCase()])
     .filter((s): s is 1 | 2 | 3 => s !== undefined);
+  return graded.length > 0 ? Math.max(...graded) : null;
+}
+
+// The severity a HUMAN assigned, or null when every severity label on the issue
+// was applied by an automation. Calibration is the one place provenance
+// decides: grading the judge against a label another model applied measures
+// two models agreeing, not whether the judge matches the maintainer — and
+// judge.tier_agreement is the gate for judge.* ever earning any weight
+// (ADR-006), so it has to be able to prove the judge wrong.
+//
+// A GitHub App (the Claude app included) is actor __typename "Bot". An
+// automation driving the REST API with a person's PAT is indistinguishable
+// from that person here, so JUDGE_CALIBRATION_EXCLUDE names those logins.
+export function humanLabelSeverity(issue: IssueNode, excluded: ReadonlySet<string>): number | null {
+  const current = new Set((issue.labels?.nodes ?? []).map((l) => l.name.toLowerCase()));
+  const graded = (issue.timelineItems?.nodes ?? [])
+    .flatMap((node) => {
+      const event = node as LabeledEvent;
+      const name = event.label?.name?.toLowerCase();
+      if (!name || !current.has(name)) return []; // labelled then removed
+      const actor = event.actor;
+      if (!actor || actor.__typename !== "User") return [];
+      if (excluded.has(actor.login.toLowerCase())) return [];
+      const severity = LABEL_SEVERITY[name];
+      return severity === undefined ? [] : [severity];
+    });
   return graded.length > 0 ? Math.max(...graded) : null;
 }
 
@@ -201,6 +250,12 @@ const parseScope = (raw: string | undefined): Scope =>
 
 const isPrivate = (entity: KnownEntity): boolean => entity.metadata?.private === true;
 
+// Logins whose labels do not count as ground truth. GitHub Apps are already
+// excluded by actor type; this is for automations running under a person's PAT,
+// which the API reports as that person.
+const parseExcluded = (raw: string | undefined): ReadonlySet<string> =>
+  new Set((raw ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+
 export const judge: Poller = {
   id: "judge",
   // Daily, not hourly: issues do not change hourly, the verdict costs a model
@@ -217,6 +272,7 @@ export const judge: Poller = {
     if (!key) throw new Error("unconfigured: set the TYPESAFE_API_KEY secret to enable this poller");
 
     const scope = parseScope(env.JUDGE_SCOPE);
+    const excluded = parseExcluded(env.JUDGE_CALIBRATION_EXCLUDE);
     const now = Math.floor(Date.now() / 1000);
     const dayBucket = String(now - (now % DAY));
     const signals: SignalInsert[] = [];
@@ -238,6 +294,7 @@ export const judge: Poller = {
 
     let lowConfidence = 0;
     let withheldBodies = 0;
+    let botLabelled = 0;
     let attempted = 0;
     let judged = 0;
     for (const entity of repos) {
@@ -264,17 +321,26 @@ export const judge: Poller = {
       }
       if (total > nodes.length) notes.push(`${ref}: read ${nodes.length} of ${total} open issues`);
 
-      const withSeverity = nodes.map((issue) => ({ issue, labelled: labelSeverity(issue) }));
+      const withSeverity = nodes.map((issue) => ({
+        issue,
+        labelled: labelSeverity(issue),
+        human: humanLabelSeverity(issue, excluded),
+      }));
       const unlabelled = withSeverity.filter((r) => r.labelled === null).map((r) => r.issue);
-      const labelled = withSeverity.filter((r) => r.labelled !== null);
+      // Calibration takes only human-applied labels. An issue an automation
+      // tiered is still "labelled" for the proposal split above — it just
+      // cannot serve as ground truth for grading the judge.
+      const humanLabelled = withSeverity.filter((r) => r.human !== null);
+      const autoLabelled = withSeverity.filter((r) => r.labelled !== null && r.human === null).length;
+      if (autoLabelled > 0) botLabelled += autoLabelled;
       if (unlabelled.length > UNLABELED_CAP) {
         notes.push(`${ref}: proposed tiers for ${UNLABELED_CAP} of ${unlabelled.length} unlabelled issues`);
       }
-      if (labelled.length > LABELED_CAP) {
-        notes.push(`${ref}: calibrated against ${LABELED_CAP} of ${labelled.length} labelled issues`);
+      if (humanLabelled.length > LABELED_CAP) {
+        notes.push(`${ref}: calibrated against ${LABELED_CAP} of ${humanLabelled.length} human-labelled issues`);
       }
       const toPropose = unlabelled.slice(0, UNLABELED_CAP);
-      const toCalibrate = labelled.slice(0, LABELED_CAP);
+      const toCalibrate = humanLabelled.slice(0, LABELED_CAP);
 
       // JUDGE_SCOPE=titles: a private repo's issue bodies never leave the
       // deployment. Titles alone still tier usefully; the verdicts are just
@@ -342,7 +408,7 @@ export const judge: Poller = {
       // Low-confidence verdicts are graded here rather than dropped: excluding
       // the judge's own uncertain answers would flatter the agreement number.
       const compared = toCalibrate
-        .map((r) => ({ expected: r.labelled as number, verdict: verdicts.get(r.issue.number) }))
+        .map((r) => ({ expected: r.human as number, verdict: verdicts.get(r.issue.number) }))
         .filter((c): c is { expected: number; verdict: Verdict } => c.verdict !== undefined);
       const exact = compared.filter((c) => c.verdict.index === c.expected).length;
       const within = compared.filter((c) => Math.abs(c.verdict.index - c.expected) <= 1).length;
@@ -350,10 +416,13 @@ export const judge: Poller = {
         entityId: entity.id,
         metric: "judge.tier_agreement",
         valueNum: compared.length > 0 ? Math.round((exact / compared.length) * 100) : undefined,
+        // The denominator is named, because "80% agreement" means nothing
+        // without knowing it was 4 of 5. An empty sample reports no number at
+        // all rather than a 0 that reads as "the judge is always wrong".
         valueText:
           compared.length > 0
-            ? `${exact} of ${compared.length} exact · ${within} within one tier`
-            : "no labelled issues to compare against",
+            ? `${exact} of ${compared.length} exact · ${within} within one tier · human-labelled sample`
+            : "no human-labelled issues to compare against",
         severity: 0,
         url: `${repoUrl}/issues?q=${encodeURIComponent(labeledQuery())}`,
         observedAt: now,
@@ -366,6 +435,12 @@ export const judge: Poller = {
     // marching forward while nothing was ever judged, which reads as healthy.
     if (attempted > 0 && judged === 0) {
       throw new Error(`judge: no repo could be judged (${attempted} attempted) — ${notes.join("; ")}`);
+    }
+    if (botLabelled > 0) {
+      // Not a failure — but if this number dwarfs the calibration sample, the
+      // portfolio is being tiered by automation and the gate has little to
+      // grade against. That has to be visible, not inferred from a small N.
+      notes.push(`${botLabelled} issue(s) excluded from calibration: severity label not applied by a human`);
     }
     if (lowConfidence > 0) {
       notes.push(`${lowConfidence} verdict(s) dropped below the ${MIN_CONFIDENCE} confidence floor`);

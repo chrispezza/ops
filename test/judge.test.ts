@@ -22,11 +22,24 @@ const repo = (over: Partial<KnownEntity> = {}): KnownEntity => ({
 
 const ctxOf = (entities: KnownEntity[]) => ({ listEntities: async () => entities });
 
-const issue = (number: number, title: string, labels: string[] = [], body = "some detail") => ({
+// Labels carry provenance: the timeline says who applied each one. Default is a
+// human, so a fixture reads as "the maintainer labelled this" unless it says
+// otherwise.
+const HUMAN = { login: "chrispezza", __typename: "User" };
+const CLAUDE_APP = { login: "claude[bot]", __typename: "Bot" };
+
+const issue = (
+  number: number,
+  title: string,
+  labels: string[] = [],
+  body = "some detail",
+  actor: { login: string; __typename: string } = HUMAN,
+) => ({
   number,
   title,
   body,
   labels: { nodes: labels.map((name) => ({ name })) },
+  timelineItems: { nodes: labels.map((name) => ({ label: { name }, actor })) },
 });
 
 interface StubOpts {
@@ -111,7 +124,62 @@ describe("judge poller", () => {
 
     const agreement = signalFor(result, "judge.tier_agreement");
     expect(agreement?.valueNum).toBe(50);
-    expect(agreement?.valueText).toBe("1 of 2 exact · 2 within one tier");
+    expect(agreement?.valueText).toBe("1 of 2 exact · 2 within one tier · human-labelled sample");
+  });
+
+  it("refuses to grade itself against labels an automation applied", async () => {
+    stubUpstreams({
+      issues: [
+        issue(12, "data loss on sync", ["p0"], "detail", CLAUDE_APP),
+        issue(13, "button misaligned", ["p2"], "detail", CLAUDE_APP),
+      ],
+      scores: { 12: { score: 3, confidence: 0.9 }, 13: { score: 1, confidence: 0.9 } },
+    });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+    // Both labels came from the Claude GitHub App. Agreeing with them would be
+    // two models agreeing, so there is no number to report.
+    const agreement = signalFor(result, "judge.tier_agreement");
+    expect(agreement?.valueNum).toBeUndefined();
+    expect(agreement?.valueText).toBe("no human-labelled issues to compare against");
+    expect(result.notes?.join(" ")).toContain("2 issue(s) excluded from calibration");
+  });
+
+  it("still treats an automation-labelled issue as tiered, so it gets no proposal", async () => {
+    stubUpstreams({
+      issues: [issue(14, "already triaged by the routine", ["p1"], "detail", CLAUDE_APP)],
+      scores: { 14: { score: 3, confidence: 0.95 } },
+    });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+    // issues.flagged already sees a p1 whoever applied it — proposing again is noise.
+    expect(signalFor(result, "judge.issue_tier")?.valueNum).toBe(0);
+  });
+
+  it("honours JUDGE_CALIBRATION_EXCLUDE for automations running under a person's PAT", async () => {
+    const robot = { login: "ops-routine", __typename: "User" };
+    stubUpstreams({
+      issues: [issue(15, "labelled by a PAT-driven routine", ["p0"], "detail", robot)],
+      scores: { 15: { score: 3, confidence: 0.9 } },
+    });
+    const result = await judge.poll(
+      { ...env, ...KEY, JUDGE_CALIBRATION_EXCLUDE: "ops-routine" } as unknown as Env,
+      ctxOf([repo()]),
+    );
+    expect(signalFor(result, "judge.tier_agreement")?.valueNum).toBeUndefined();
+  });
+
+  it("ignores a severity label that was applied and later removed", async () => {
+    const removed = {
+      ...issue(16, "label since removed", [], "detail"),
+      // timeline remembers the LABELED_EVENT; the issue no longer carries it
+      timelineItems: { nodes: [{ label: { name: "p0" }, actor: HUMAN }] },
+    };
+    stubUpstreams({ issues: [removed], scores: { 16: { score: 2, confidence: 0.9 } } });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+    // It is unlabelled now, so it gets a proposal and no calibration entry.
+    expect(signalFor(result, "judge.issue_tier")?.valueNum).toBe(1);
+    expect(signalFor(result, "judge.tier_agreement")?.valueNum).toBeUndefined();
   });
 
   it("never shows the judge the labels it is being graded against", async () => {

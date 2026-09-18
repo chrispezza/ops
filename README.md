@@ -103,7 +103,8 @@ label a maintainer would have applied, and records the answer at **severity 0**
 — visible on `/findings` and the repo's page, invisible to the triage score,
 push alerts and the digest. Acting on a proposal means applying the label in
 GitHub yourself, and `judge.tier_agreement` then grades how often the judge and
-the maintainer agreed. The rules that keep it advisory are
+the maintainer agreed — counting only labels a human applied, since grading one
+model against another's label measures agreement, not calibration. The rules that keep it advisory are
 [ADR-006](docs/adr/006-advisory-judge-signals.md). Issue text leaves your
 deployment when this poller runs; `JUDGE_SCOPE` bounds how much.
 
@@ -133,6 +134,7 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `CF_ACCOUNT_ID` | account whose Worker/D1 analytics to read |
 | `MARKETPLACE_REPO` | `owner/repo` of a plugin marketplace; omit to disable `manifests` |
 | `JUDGE_SCOPE` | how much issue text the `judge` poller may send to TypeSafe: `all`, `titles` (private repos contribute titles only), `public` (private repos are not judged) |
+| `JUDGE_CALIBRATION_EXCLUDE` | GitHub logins whose labels are not ground truth for `judge.tier_agreement` (for automations labelling under a person's PAT; GitHub Apps are excluded automatically) |
 
 **Secrets** (`wrangler secret put <NAME>`), all optional:
 
