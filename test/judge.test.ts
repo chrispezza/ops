@@ -8,7 +8,7 @@ import { judge, tierFromScore } from "../src/pollers/judge";
 import type { KnownEntity, PollerResult, SignalInsert } from "../src/pollers/types";
 
 const NOW = Math.floor(Date.now() / 1000);
-const KEY = { JEV_API_KEY: "test-jev-key", GITHUB_PAT: "test-pat" };
+const KEY = { TYPESAFE_API_KEY: "test-typesafe-key", GITHUB_PAT: "test-pat" };
 
 const repo = (over: Partial<KnownEntity> = {}): KnownEntity => ({
   id: "repo:chrispezza/ops",
@@ -80,7 +80,7 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("judge poller", () => {
-  it("is calmly unconfigured without a JEV_API_KEY", async () => {
+  it("is calmly unconfigured without a TYPESAFE_API_KEY", async () => {
     await expect(judge.poll({ ...env, GITHUB_PAT: "x" } as Env, ctxOf([repo()]))).rejects.toThrow(/^unconfigured:/);
   });
 

@@ -95,7 +95,7 @@ as separate truth.
 | `x_usage` | daily | `X_BEARER_TOKEN` | monthly post cap usage |
 | `cloudflare` | daily | `CLOUDFLARE_API_TOKEN`, `CF_ACCOUNT_ID` | Worker requests/errors, D1 size |
 | `manifests` | daily | `MARKETPLACE_REPO`, `GITHUB_PAT` | Claude Code plugin/skill inventory |
-| `judge` | daily | `JEV_API_KEY`, `GITHUB_PAT` | advisory issue tiering — `judge.issue_tier`, `judge.tier_agreement` |
+| `judge` | daily | `TYPESAFE_API_KEY`, `GITHUB_PAT` | advisory issue tiering — `judge.issue_tier`, `judge.tier_agreement` |
 
 The `judge` poller is the one that does not report a fact. It reads open issues
 that carry no severity label, asks [TypeSafe Jev](https://typesafe.ai) which
@@ -146,7 +146,7 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `CLOUDFLARE_API_TOKEN` | `cloudflare` — scope it read-only (Account Analytics:Read + D1:Read), never the Global key |
 | `INGEST_TOKEN` | `POST /ingest` — without it the endpoint returns 503 |
 | `DIGEST_TOKEN` | `GET /digest/md` — without it the endpoint returns 503 |
-| `JEV_API_KEY` | `judge` — advisory issue tiering via TypeSafe Jev |
+| `TYPESAFE_API_KEY` | `judge` — advisory issue tiering via TypeSafe Jev |
 | `NTFY_URL` | push notifications for new high-severity findings, and the Friday digest |
 | `NTFY_TOKEN` | auth for a protected ntfy topic |
 

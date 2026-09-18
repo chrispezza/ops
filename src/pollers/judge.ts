@@ -213,8 +213,8 @@ export const judge: Poller = {
     "judge.tier_agreement": "state",
   },
   async poll(env, ctx): Promise<PollerResult> {
-    const key = env.JEV_API_KEY;
-    if (!key) throw new Error("unconfigured: set the JEV_API_KEY secret to enable this poller");
+    const key = env.TYPESAFE_API_KEY;
+    if (!key) throw new Error("unconfigured: set the TYPESAFE_API_KEY secret to enable this poller");
 
     const scope = parseScope(env.JUDGE_SCOPE);
     const now = Math.floor(Date.now() / 1000);
