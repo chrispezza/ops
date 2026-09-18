@@ -81,9 +81,14 @@ We will go with **Option 1**.
 3. **A verdict is a proposal in the maintainer's own vocabulary.** The judge
    emits GitHub label names that `LABEL_SEVERITY` already grades, so acting on
    one means applying that label in GitHub. Ops never applies it (ADR-001).
-4. **The domain must grade itself.** `judge.tier_agreement` compares verdicts on
-   a blind sample of already-labelled issues against the maintainer's labels. A
-   judge metric with no way to be shown wrong does not belong in this domain.
+4. **The domain must grade itself, against humans only.** `judge.tier_agreement`
+   compares verdicts on a blind sample of already-labelled issues against the
+   maintainer's labels. Only labels a **human** applied count as ground truth:
+   a GitHub App is excluded by actor type, and `JUDGE_CALIBRATION_EXCLUDE` names
+   logins for automations that label under a person's PAT. A judge metric with
+   no way to be shown wrong does not belong in this domain — and grading one
+   model against a label another model applied is exactly that, dressed as a
+   number. The sample size travels with the percentage for the same reason.
 5. **Deleting every `judge.*` row must change no other value.** This is the test
    of the whole ADR. If dropping the domain would move a score, an alert or a
    digest line, the domain has stopped being advisory.
@@ -113,3 +118,12 @@ Raising it above severity 0 requires a new ADR.
   otherwise live in their DPA.
 - Read-only still holds. The judge reads issues and writes a row in Ops. No
   upstream write scope is requested anywhere (ADR-001).
+- Provenance is only consulted for calibration. Whether an issue is *already
+  tiered* — and so not worth proposing a tier for — ignores who applied the
+  label: `issues.flagged` sees a `p1` whoever put it there. Rule 4 is about
+  ground truth, not about which issues the judge reads.
+- This portfolio has an agent labelling pass, so the human-labelled sample can
+  be small or empty. That is reported (`no human-labelled issues to compare
+  against`, plus a note counting the exclusions) rather than smoothed over: an
+  ungradeable judge must look ungraded, because the alternative is a confident
+  number that graduated the domain on nothing.

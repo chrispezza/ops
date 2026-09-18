@@ -36,6 +36,11 @@
 		// and body for every tracked repo), "titles" (private repos contribute
 		// titles only), or "public" (private repos are not judged at all).
 		"JUDGE_SCOPE": "all",
+		// Comma-separated GitHub logins whose labels do NOT count as ground truth
+		// for judge.tier_agreement. GitHub Apps are excluded automatically; this is
+		// for automations that label under a person's own PAT, which the API
+		// reports as that person. Empty means "trust every human-actor label".
+		"JUDGE_CALIBRATION_EXCLUDE": "",
 		// Verify the Cloudflare Access assertion inside the Worker instead of trusting
 		// that the edge policy is present. Both must be set to enable it: the team name
 		// from <team>.cloudflareaccess.com, and the Access application's AUD tag
