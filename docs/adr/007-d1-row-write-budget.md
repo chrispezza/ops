@@ -11,8 +11,8 @@ pagefind: true
 
 ## Status
 
-Proposed — the plan change is a billing decision the maintainer makes; the
-watcher and the runner fix in the same PR stand either way.
+Accepted. The account moved to Workers Paid on 2026-09-18, the same day as
+the incident below.
 
 ## Context
 
@@ -157,16 +157,20 @@ is the fallback to take, as its own migration with the read regression on
 
 ## Consequences
 
-- The watcher's denominators are the free-tier allowances. When the plan
-  changes they are wrong in the safe direction (they will warn early); they
-  should become vars (ADR-004) with the plan's monthly figures prorated per day
-  in the same change that flips the plan.
+- The watcher's denominators are vars (`D1_ROW_READS_PER_DAY`,
+  `D1_ROW_WRITES_PER_DAY`, ADR-004), empty meaning the free-tier daily caps.
+  Workers Paid meters per month, so this deployment sets the monthly figures
+  ÷ 30: a daily pace at which the month stays inside the allowance, not a
+  hard cut-off. At ~81k writes a day against 1.66M the watcher will sit near
+  5% — it stays because the next index migration or the next twenty repos
+  should still be visible before they matter.
 - Any migration that adds an index or a column to `signals` states its
   row-write cost in the PR (one per existing row; `SELECT COUNT(*)` on the
   affected rows). On the free tier it is applied right after 00:00 UTC with
   nothing else that day. CLAUDE.md carries the rule.
-- Today's outage clears at 00:00 UTC on 2026-09-19 without intervention; the
-  hourly runs resume at the ~81% steady state until the plan changes.
+- Today's outage cleared with the plan change; nothing stored between 01:01
+  UTC and the upgrade is recoverable, and the digest for that window will
+  show the gap.
 - The `AUTOINCREMENT` on `signals.id` costs one row per insert for
   `sqlite_sequence`. It is there so ids are never reused after the sweep
   deletes rows — `signal_latest` points by id and `insertWatermark` orders by

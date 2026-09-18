@@ -56,8 +56,17 @@ interface GqlResponse {
 // signal batch is refused before the poller's status row lands, so /health
 // keeps showing the last success while nothing is being stored (2026-09-18,
 // ADR-007). Same watcher, same thresholds, second metric.
+//
+// The allowances are a deployment fact (ADR-004): the free tier's daily caps
+// unless the vars say otherwise. Workers Paid meters per month, so a paid
+// deployment sets the monthly figure divided by 30 — a daily pace at which the
+// month's allowance holds, not a hard daily cut-off.
 const D1_FREE_TIER_ROW_READS_PER_DAY = 5_000_000;
 const D1_FREE_TIER_ROW_WRITES_PER_DAY = 100_000;
+const allowance = (raw: string | undefined, fallback: number): number => {
+  const n = Number(raw);
+  return raw && Number.isFinite(n) && n > 0 ? n : fallback;
+};
 const D1_QUERY = /* GraphQL */ `
   query ($accountTag: String!, $start: Time!, $end: Time!) {
     viewer {
@@ -271,8 +280,8 @@ export const cloudflare: Poller = {
         sourceUrl: dashboard,
       });
       const caps = [
-        { metric: "d1.read_cap_pct", verb: "read", key: "read", allowance: D1_FREE_TIER_ROW_READS_PER_DAY },
-        { metric: "d1.write_cap_pct", verb: "written", key: "written", allowance: D1_FREE_TIER_ROW_WRITES_PER_DAY },
+        { metric: "d1.read_cap_pct", verb: "read", key: "read", allowance: allowance(env.D1_ROW_READS_PER_DAY, D1_FREE_TIER_ROW_READS_PER_DAY) },
+        { metric: "d1.write_cap_pct", verb: "written", key: "written", allowance: allowance(env.D1_ROW_WRITES_PER_DAY, D1_FREE_TIER_ROW_WRITES_PER_DAY) },
       ] as const;
       for (const cap of caps) {
         const perDb = [...(byDay.get(lastDay) ?? [])]

@@ -5,7 +5,15 @@ import { cloudflare } from "../src/pollers/cloudflare";
 
 const NOW = Math.floor(Date.now() / 1000);
 const noCtx = { listEntities: async () => [] };
-const cfEnv = { ...env, CLOUDFLARE_API_TOKEN: "cf-test-token", CF_ACCOUNT_ID: "acct123" } as unknown as Env;
+// Allowances left empty: the tests assert against the free-tier caps whatever
+// wrangler.jsonc says this deployment is on.
+const cfEnv = {
+  ...env,
+  CLOUDFLARE_API_TOKEN: "cf-test-token",
+  CF_ACCOUNT_ID: "acct123",
+  D1_ROW_READS_PER_DAY: "",
+  D1_ROW_WRITES_PER_DAY: "",
+} as unknown as Env;
 
 beforeEach(async () => {
   await env.DB.batch([env.DB.prepare("DELETE FROM signals"), env.DB.prepare("DELETE FROM entities")]);

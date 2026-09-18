@@ -46,6 +46,13 @@
 		// Claude GitHub App here; "[bot]" suffix optional). It is graded against the
 		// maintainer in turn (judge.reference_agreement). Empty = human labels only.
 		"JUDGE_REFERENCE_ACTORS": "claude",
+		// D1 row allowances the cloudflare poller judges d1.read_cap_pct and
+		// d1.write_cap_pct against, per day. Empty = the Workers Free daily caps
+		// (5M reads, 100k writes). This account is on Workers Paid (2026-09-18),
+		// which meters 25B reads and 50M writes per MONTH; these are those figures
+		// divided by 30 — the daily pace that keeps the month inside the allowance.
+		"D1_ROW_READS_PER_DAY": "833000000",
+		"D1_ROW_WRITES_PER_DAY": "1660000",
 		// Verify the Cloudflare Access assertion inside the Worker instead of trusting
 		// that the edge policy is present. Both must be set to enable it: the team name
 		// from <team>.cloudflareaccess.com, and the Access application's AUD tag
