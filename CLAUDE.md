@@ -137,8 +137,9 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 - Branch from `main` as `type/short-slug`; open a PR; never push to `main`.
   CI must be green before merge. Do not bypass hooks with `--no-verify`.
 - Deploys are manual (`wrangler deploy` from `main`), never from a branch.
-- Do not fix issues outside the task silently. Report them as Found Work at
-  the end and let the maintainer decide.
+- Found work: if it is small, in this repo and low-risk, fix it in the current
+  PR and list it in the summary. Otherwise `gh issue create` in the repo it
+  belongs to. Never leave it only in chat.
 
 ## Where things are
 
