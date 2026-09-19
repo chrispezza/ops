@@ -48,6 +48,7 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("11 open issue(s)");
     expect(prompt).not.toContain("Dependabot PR");
     expect(prompt).toContain("gh repo clone clownware/gittunes");
+    expect(prompt).toContain("clownware-code-tools:deps-audit");
     // done-criteria mirror the signals the next poll re-checks
     expect(prompt).toContain("ci.status = success");
     expect(prompt).toContain("deps.vuln_count = 0");
