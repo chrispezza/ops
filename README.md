@@ -263,6 +263,14 @@ spend roll up correctly. Unknown fields are ignored, and `metric` must match
 Signals referencing an entity Ops has never seen are rejected, so include the
 entity in the same request (upserts are idempotent).
 
+**Responses.** `202` means stored. `400` means the payload is wrong: fix it,
+because retrying won't help. `401` is a bad token. `503` means the dashboard's
+storage is unavailable, not that your payload is wrong. It carries
+`Retry-After` (and `retryAfter` in the body): the seconds until 00:00 UTC when
+D1's daily allowance is spent, or 60 when D1 is restarting. A reporter can
+warn on `503` instead of failing the build. Resending the same `dedupeKey`
+later is safe. `500` is an unrecognised failure on the Ops side.
+
 ## Development
 
 ```sh

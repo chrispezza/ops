@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { getCookie } from "hono/cookie";
 import { verifyAccessJwt } from "./core/access";
+import { classifyD1Error } from "./core/d1-errors";
 import { EXPECTED_METRICS, TRIAGE_WEIGHTS, type TriageWeights } from "./config";
 import {
   type BalanceEntry,
@@ -571,13 +572,17 @@ app.get("/partials/freshness", async (c) => {
 app.onError((err, c) => {
   console.error(err);
   const message = err instanceof Error ? err.message : String(err);
-  const exhausted = /row read limit|code: 7500/i.test(message);
-  return c.text(
-    exhausted
-      ? `ops: D1 refused the query — the account's daily row-read allowance is spent. Every read on every database fails until 00:00 UTC.\n\n${message}`
-      : `ops: ${message}`,
-    exhausted ? 503 : 500,
-  );
+  const failure = classifyD1Error(message, epochNow());
+  if (failure.kind === "quota" || failure.kind === "transient") {
+    c.header("Retry-After", String(failure.retryAfter));
+    return c.text(
+      failure.kind === "quota"
+        ? `ops: D1 refused the query — the account's daily row allowance is spent. Every query on every database fails until 00:00 UTC.\n\n${message}`
+        : `ops: D1 is restarting or overloaded — retry in a minute.\n\n${message}`,
+      503,
+    );
+  }
+  return c.text(`ops: ${message}`, 500);
 });
 
 // Hono's default 404 is bare text with no nav — a dead end for any stale
