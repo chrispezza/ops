@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { latestSignals, pollerHealth } from "../src/core/queries";
+import { latestSignals, POLLER_ONSET_SQL, pollerHealth } from "../src/core/queries";
 import { runPollers } from "../src/core/runner";
 import { upsertEntities } from "../src/core/store";
 import { MAX_TARGETS, uptime } from "../src/pollers/uptime";
@@ -139,6 +139,11 @@ describe("uptime target cap", () => {
     const never = (await pollerHealth(env.DB)).find((h) => h.entityId === "poller:never");
     expect(never?.lastOk).toBeNull();
     expect(never?.failingSince).toBe(NOW - 60);
+
+    // #53: one index seek per poller on (metric, entity_id, observed_at), not a
+    // pass over every poller.status row — this runs on every page view.
+    const plan = await env.DB.prepare(`EXPLAIN QUERY PLAN ${POLLER_ONSET_SQL}`).all<{ detail: string }>();
+    expect(plan.results.map((r) => r.detail).join("\n")).toMatch(/idx_signals_metric \(metric=\? AND entity_id=\? AND observed_at>\?\)/);
   });
 
   it("under the cap there is no note and the status stays severity 0", async () => {

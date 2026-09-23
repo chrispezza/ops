@@ -142,18 +142,31 @@ export interface PollerHealth {
   failingSince: number | null;
 }
 
+// A poller's outage onset. "Success" is the run summary's ok flag, not
+// severity 0: a run that succeeded with coverage notes is recorded at severity
+// 1 (calm) and still counts as fresh data — otherwise the freshness chip would
+// age forever while the poller was in fact working. Unconfigured runs are
+// ok:false. Exported so a test can pin its plan to the index seek (#53).
+export const POLLER_ONSET_SQL = `SELECT p.id AS entity_id,
+  (SELECT s.observed_at FROM signals s
+    WHERE s.metric = 'poller.status' AND s.entity_id = p.id
+      AND s.observed_at > coalesce(
+        (SELECT l.observed_at FROM signal_latest l WHERE l.entity_id = p.id AND l.metric = 'poller.last_ok'), 0)
+      AND NOT (json_extract(s.value_text, '$.ok') = 1)
+    ORDER BY s.observed_at ASC LIMIT 1) AS onset
+FROM entities p
+WHERE p.kind = 'poller'`;
+
 // One row per poller: latest status signal + latest successful one (ux §2.6).
 export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
-  // "Success" is the run summary's ok flag, not severity 0: a run that
-  // succeeded with coverage notes is recorded at severity 1 (calm) and still
-  // counts as fresh data — otherwise the freshness chip would age forever
-  // while the poller was in fact working. Unconfigured runs are ok:false.
-  const ok = (col: string) => `json_extract(${col}, '$.ok') = 1`;
   // The last ok run is the runner-maintained `poller.last_ok` row (migration
-  // 0004), a signal_latest pointer like any other latest. The onset scan is
-  // then bounded to the status rows after it — none for a healthy poller —
-  // where it used to json_extract its way through every poller.status row on
-  // every page view (this runs in the layout's freshness chip).
+  // 0004), a signal_latest pointer like any other latest. The onset is the
+  // first failing status row after it — none for a healthy poller. It is a
+  // per-poller subquery with LIMIT 1 so it seeks idx_signals_metric on
+  // (metric, entity_id, observed_at) and stops at the first hit; the joined
+  // form drove from every poller.status row and filtered after, 1,882 rows per
+  // page view in production against 26 for this one (#53). This runs in the
+  // layout's freshness chip, so every page view pays for it.
   const [entities, lastRuns, lastOks, onsets] = await Promise.all([
     db.prepare("SELECT id, name FROM entities WHERE kind = 'poller' ORDER BY id").all<{ id: string; name: string }>(),
     db
@@ -169,16 +182,8 @@ export async function pollerHealth(db: D1Database): Promise<PollerHealth[]> {
       )
       .all<SignalRow>(),
     db
-      .prepare(
-        `SELECT p.id AS entity_id, MIN(s.observed_at) AS onset
-         FROM entities p
-         LEFT JOIN signal_latest l ON l.entity_id = p.id AND l.metric = 'poller.last_ok'
-         JOIN signals s ON s.metric = 'poller.status' AND s.entity_id = p.id
-           AND s.observed_at > coalesce(l.observed_at, 0)
-         WHERE p.kind = 'poller' AND NOT (${ok("s.value_text")})
-         GROUP BY p.id`,
-      )
-      .all<{ entity_id: string; onset: number }>(),
+      .prepare(POLLER_ONSET_SQL)
+      .all<{ entity_id: string; onset: number | null }>(),
   ]);
   const runById = new Map(lastRuns.results.map((s) => [s.entity_id, s]));
   const okById = new Map(lastOks.results.map((s) => [s.entity_id, s]));

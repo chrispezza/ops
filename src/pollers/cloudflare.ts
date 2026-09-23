@@ -266,10 +266,16 @@ export const cloudflare: Poller = {
     }
 
     // The allowances are per account, so the verdicts live on an account
-    // entity: last complete day's total against each cap, with the
-    // per-database split in the text so the culprit reads without a click.
+    // entity, with the per-database split in the text so the culprit reads
+    // without a click. Two days are judged and the worse one stands: the last
+    // complete day, and today's running total. The partial bucket is what
+    // lets it warn the same morning a runaway starts (09-18's migration spent
+    // the write allowance before 02:00) instead of reporting it the day after,
+    // once the damage is done (#53). A partial day can only undercount, so
+    // judging it never raises a false alarm.
     const lastDay = [...byDay.keys()].filter((date) => date < end).sort().at(-1);
-    if (lastDay) {
+    const judgedDays = [lastDay, byDay.has(end) ? end : undefined].filter((d): d is string => d !== undefined);
+    if (judgedDays.length > 0) {
       const accountId = "cf:account";
       const dashboard = `https://dash.cloudflare.com/${account}/workers/d1`;
       entities.set(accountId, {
@@ -284,18 +290,25 @@ export const cloudflare: Poller = {
         { metric: "d1.write_cap_pct", verb: "written", key: "written", allowance: allowance(env.D1_ROW_WRITES_PER_DAY, D1_FREE_TIER_ROW_WRITES_PER_DAY) },
       ] as const;
       for (const cap of caps) {
-        const perDb = [...(byDay.get(lastDay) ?? [])]
-          .map(([name, n]) => [name, n[cap.key]] as const)
-          .sort(([, a], [, b]) => b - a);
-        const total = perDb.reduce((sum, [, n]) => sum + n, 0);
-        const pct = Math.round((total / cap.allowance) * 1000) / 10;
+        const verdicts = judgedDays.map((date) => {
+          const perDb = [...(byDay.get(date) ?? [])]
+            .map(([name, n]) => [name, n[cap.key]] as const)
+            .sort(([, a], [, b]) => b - a);
+          const total = perDb.reduce((sum, [, n]) => sum + n, 0);
+          return { date, perDb, total, pct: Math.round((total / cap.allowance) * 1000) / 10 };
+        });
+        // Ties go to the complete day: it is the settled figure.
+        const worst = verdicts.reduce((a, b) => (b.pct > a.pct ? b : a));
+        const { perDb, total, pct } = worst;
+        const when = worst.date === end ? `so far today (${end})` : `on ${worst.date}`;
         signals.push({
           entityId: accountId,
           metric: cap.metric,
           valueNum: pct,
-          valueText: `${compact(total)} of ${compact(cap.allowance)} rows ${cap.verb} on ${lastDay} · ${perDb.map(([name, n]) => `${name} ${compact(n)}`).join(", ")}`,
-          // ≥100%: every D1 query of that kind on the account failed from the
-          // moment it tripped until midnight UTC. ≥80%: tomorrow is the day.
+          valueText: `${compact(total)} of ${compact(cap.allowance)} rows ${cap.verb} ${when} · ${perDb.map(([name, n]) => `${name} ${compact(n)}`).join(", ")}`,
+          // ≥100%: on the free tier every D1 query of that kind on the account
+          // fails until midnight UTC; on Workers Paid the day ran over its share
+          // of the monthly allowance. ≥80%: close to it.
           severity: pct >= 100 ? 3 : pct >= 80 ? 2 : 0,
           url: dashboard,
           observedAt: now,
