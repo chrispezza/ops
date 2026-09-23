@@ -132,7 +132,7 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     `1. Get the repo (gh repo clone ${repoRef} if you don't have a checkout) and read its CLAUDE.md / README / CONTRIBUTING for conventions before changing anything.`,
     "2. A down site comes first: check the host/DNS/deploy pipeline via the finding's URL before touching code.",
     "3. Then the CI failure if there is one: gh run list, then gh run view --log-failed on the latest failing run.",
-    "4. For Dependabot alerts: gh api repos/" + repoRef + "/dependabot/alerts — prefer minimal version bumps that keep tests green.",
+    "4. For Dependabot alerts and PRs: run the clownware-code-tools:deps-audit skill first (assessment only — it ranks advisories, staleness and lockfile drift), then act on its ranking. Raw alerts: gh api repos/" + repoRef + "/dependabot/alerts — prefer minimal version bumps that keep tests green.",
     "5. For PRs and issues: gh pr list / gh issue list — summarize state and recommend merge/update/close per item rather than silently fixing.",
     "6. Run the repo's own tests and quality gates before proposing changes.",
     "",
