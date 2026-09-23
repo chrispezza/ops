@@ -36,6 +36,13 @@ row — 0004 wrote 117,983 and spent 2026-09-18's allowance before 02:00 UTC. A
 PR adding an index or a column to `signals` states that cost, and on the free
 tier the migration is applied right after 00:00 UTC with nothing else that day.
 
+Diagnosing D1 usage: start from `d1AnalyticsAdaptiveGroups` by `date` or
+`datetimeHour` (database-level totals, exact), then reason from code. Do not
+trust `wrangler d1 insights` for totals: its per-query dataset is sampled and
+once summed to ~270k rows against a real 5.1M, missing the retention DELETE
+entirely (#53). For one query's exact cost, `wrangler d1 execute --remote
+--json` reports `meta.rows_read`.
+
 ## Architecture invariants (do not violate without a new ADR)
 
 - **Read here, act there** ([ADR-001](docs/adr/001-read-mostly-system-of-record.md)).

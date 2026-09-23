@@ -211,11 +211,32 @@ describe("cloudflare poller", () => {
     cap = (await cloudflare.poll(cfEnv, noCtx)).signals.find((s) => s.metric === "d1.read_cap_pct");
     expect(cap).toMatchObject({ valueNum: 3, severity: 0 });
 
-    // only today's partial bucket: nothing complete to judge, no account entity
-    stubCf([{ date: day(1), status: "success", requests: 100 }], [{ date: day(0), rowsRead: 9_000_000 }]);
+    // no D1 activity at all: nothing to judge, no account entity
+    stubCf([{ date: day(1), status: "success", requests: 100 }], []);
     const result = await cloudflare.poll(cfEnv, noCtx);
     expect(result.signals.find((s) => s.metric === "d1.read_cap_pct")).toBeUndefined();
     expect(result.entities.find((e) => e.id === "cf:account")).toBeUndefined();
+  });
+
+  it("warns the same morning when today's running total is already over (#53)", async () => {
+    // 2026-09-18 shape: a calm yesterday, then a migration spends the write
+    // allowance before 02:00. Judging only the complete day would say nothing
+    // until tomorrow's run.
+    stubCf(
+      [{ date: day(1), status: "success", requests: 100 }],
+      [
+        { date: day(1), rowsRead: 1_000_000, rowsWritten: 60_000 },
+        { date: day(0), rowsRead: 400_000, rowsWritten: 132_164 },
+      ],
+    );
+    const result = await cloudflare.poll(cfEnv, noCtx);
+    const writes = result.signals.find((s) => s.metric === "d1.write_cap_pct");
+    expect(writes).toMatchObject({ valueNum: 132.2, severity: 3 });
+    expect(writes?.valueText).toBe(`132k of 100k rows written so far today (${day(0)}) · ops 132k`);
+    // Reads: yesterday is the worse day, so yesterday's figure stands.
+    const reads = result.signals.find((s) => s.metric === "d1.read_cap_pct");
+    expect(reads).toMatchObject({ valueNum: 20, severity: 0 });
+    expect(reads?.valueText).toBe(`1.00M of 5.00M rows read on ${day(1)} · ops 1.00M`);
   });
 
   it("skips the rate for a worker with no complete day yet, and reports unconfigured calmly", async () => {
