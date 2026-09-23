@@ -144,7 +144,7 @@ describe("ntfy notifications", () => {
     ]);
     await env.DB.prepare("DELETE FROM settings").run(); // reset notified state → both fresh
     await notifyNewAlerts(env.DB, testEnv, NOW + 60);
-    expect(clicks[1]).toBe("https://ops.example/triage");
+    expect(clicks[1]).toBe("https://ops.example/?view=priority");
   });
 
   it("does nothing without NTFY_URL configured", async () => {

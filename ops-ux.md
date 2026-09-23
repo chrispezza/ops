@@ -14,16 +14,16 @@ Companion to `ops-spec.md`. Defines pages, URLs, layouts, and states. Design phi
 
 | Route | View | Params |
 |---|---|---|
-| `/` | Project map (home) | `category`, `owner`, `q` |
+| `/` | Project map (home); `view=priority` is the ranked worklist | `category`, `owner`, `q`; priority adds `kind`, `min_severity`, `sort` |
 | `/board` | Derived board (now / next / later / in flight / done) | `owner`, `category`, `q` |
-| `/triage` | Ranked worklist | `kind`, `category`, `min_severity` |
+| `/triage` | 301 → `/?view=priority` (query string preserved) | — |
 | `/spend` | Consumptive burn | `window` (30d default), `entity` |
 | `/findings` | Cross-cutting audit lens | `min_severity` (2), `domain` (metric prefix), `category`, `view` (`heat` = entity × domain grid) |
 | `/e/{entity_id}` | Entity detail | `window` for interval charts |
 | `/settings` | Budgets + triage weights | — |
 | `/health` | Poller status board | — |
 
-Nav: single top bar — `Map · Board · Triage · Spend · Findings · Digest · Health · Settings` — plus a global freshness chip (worst-case staleness across sources, links to `/health`).
+Nav: single top bar — `Map · Board · Spend · Findings · Digest · Health · Settings` — plus a global freshness chip (worst-case staleness across sources, links to `/health`).
 
 ## 2. Page specs
 
@@ -39,14 +39,14 @@ Row anatomy (one line per entity):
 
 - Leading dot = worst open severity (color-coded: gray/blue/yellow/orange/red).
 - Middle: the category's **expected metrics** as compact chips (sites: LHCI perf; apps: CI/vulns/PRs; skills: usage 30d/updated). Missing expected metric renders as `—` in warning color — the hygiene gap is visible in place, not just in findings.
-- Right: triage score, deep link to source, pre-filled new-issue link.
+- Right: triage score with a bar relative to the highest score on the page, deep link to source, pre-filled new-issue link.
 - Row click → `/e/{id}`. Chip click → that finding's URL if one exists.
 
 Section headers show rollups: entity count, count-with-open-severity≥2, and for skills: total 30d invocations.
 
-### 2.2 `/triage`
+### 2.2 `/?view=priority` (was `/triage`)
 
-The map flattened, sorted by score desc. Same row anatomy plus a "why" column: top 2 score contributors in words ("critical vuln · stale 94d"). Score breakdown on hover/expand (HTMX inline expand). This page is the daily driver — the answer to "what should I work on."
+The map's other face (open question 1, resolved after real use: one URL, a `by category ⇄ by priority` toggle in the filter bar). The map flattened, sorted by score desc. Same row anatomy plus a "why" column: top 2 score contributors in words ("critical vuln · stale 94d"). Score breakdown on hover/expand (HTMX inline expand). This page is the daily driver — the answer to "what should I work on."
 
 ### 2.3 `/spend`
 
@@ -121,6 +121,6 @@ Issue and PR cards come from the `issues.cards` / `prs.cards` rows the GitHub po
 
 ## 6. Open questions (decide in first implementation PR, not before)
 
-1. Does `/triage` fold into `/` as a sort toggle? Ship both, delete one after two weeks of real use.
+1. ~~Does `/triage` fold into `/` as a sort toggle?~~ Folded: `/?view=priority`, with `/triage` redirecting.
 2. Per-category chip sets are hardcoded in templates v1; move to the expected-metrics config map only if they churn.
 3. Archive semantics: hidden from `/` and `/triage`, still visible in `/findings` history? (Leaning yes.)

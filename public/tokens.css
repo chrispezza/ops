@@ -806,3 +806,11 @@ td.heat-cell[data-sev="4"] a { background: hsl(var(--sev-4) / 0.5); color: hsl(v
 td.heat-cell.quiet a { background: hsl(var(--bg-sunken)); color: hsl(var(--fg-muted)); font-weight: 400; }
 td.heat-cell.none { background: transparent; }
 td.heat-cell a:hover { outline: 1px solid hsl(var(--border-strong)); outline-offset: -1px; }
+
+/* score bars (map + priority view): the ranking without reading digits.
+   Monochrome — the dot already carries severity; the bar is magnitude. */
+td.c-score { white-space: nowrap; }
+svg.scorebar { vertical-align: middle; margin-left: var(--space-1); }
+svg.scorebar .scorebar-track { fill: hsl(var(--bg-sunken)); }
+svg.scorebar .scorebar-fill { fill: hsl(var(--fg-muted)); }
+table.map-cols col.w-score { width: 96px; }

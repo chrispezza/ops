@@ -72,27 +72,45 @@ describe("map page", () => {
   });
 });
 
-describe("triage page", () => {
-  it("sorts by score and explains why", async () => {
+describe("priority view (the worklist, folded into the map)", () => {
+  it("sorts by score, explains why, and draws the score as a bar", async () => {
     await seedRepo();
-    const html = await (await SELF.fetch("https://ops.local/triage")).text();
+    const html = await (await SELF.fetch("https://ops.local/?view=priority")).text();
     // gittunes: sev3 CI (30) + 2 problems (4) = 34
     expect(html).toContain("34");
     expect(html).toContain("high CI status");
+    expect(html).toMatch(/<svg class="scorebar"[^>]*aria-label="score 34; highest on this page 34"/);
+    // the category sections are gone in this face; the toggle points back
+    expect(html).not.toContain("Web Apps");
+    expect(html).toMatch(/<a href="\/"[^>]*aria-current="page"|<a href="\/"[^>]*class="">\s*by category/);
     // filter that excludes everything
-    const filtered = await (await SELF.fetch("https://ops.local/triage?min_severity=4")).text();
+    const filtered = await (await SELF.fetch("https://ops.local/?view=priority&min_severity=4")).text();
     expect(filtered).toContain("Nothing matches");
   });
 
   it("marks the active sort's direction for eyes and AT alike", async () => {
     await seedRepo();
-    const byScore = await (await SELF.fetch("https://ops.local/triage")).text();
+    const byScore = await (await SELF.fetch("https://ops.local/?view=priority")).text();
     expect(byScore).toMatch(/<th[^>]*aria-sort="descending"[^>]*>\s*<a[^>]*>score/);
     expect(byScore).toContain("↓");
     expect(byScore.match(/aria-sort=/g)).toHaveLength(1); // only the active column claims a direction
-    const byName = await (await SELF.fetch("https://ops.local/triage?sort=name")).text();
+    const byName = await (await SELF.fetch("https://ops.local/?view=priority&sort=name")).text();
     expect(byName).toMatch(/<th[^>]*aria-sort="ascending"[^>]*>\s*<a[^>]*>entity/);
     expect(byName).toContain("↑");
+    // every sort link stays inside the priority face
+    expect(byName).toMatch(/href="\/\?view=priority&amp;[^"]*sort=score"/);
+  });
+
+  it("redirects the old /triage URL with its query string", async () => {
+    const res = await SELF.fetch("https://ops.local/triage?owner=clownware&sort=name", { redirect: "manual" });
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("/?owner=clownware&sort=name&view=priority");
+  });
+
+  it("draws score bars on the map too", async () => {
+    await seedRepo();
+    const map = await (await SELF.fetch("https://ops.local/")).text();
+    expect(map).toContain('class="scorebar"');
   });
 });
 
@@ -123,7 +141,7 @@ describe("entity page", () => {
     const map = await (await SELF.fetch("https://ops.local/")).text();
     expect(map).toContain("archived-section");
     expect(map.split("archived-section")[0]).not.toContain(">gittunes<"); // absent before the archived block
-    const triage = await (await SELF.fetch("https://ops.local/triage")).text();
+    const triage = await (await SELF.fetch("https://ops.local/?view=priority")).text();
     expect(triage).not.toContain(">gittunes<");
     const detail = await (await SELF.fetch("https://ops.local/e/repo:clownware/gittunes")).text();
     expect(detail).toContain("archived");
@@ -194,7 +212,7 @@ describe("owner filter", () => {
     expect(scoped).toContain("deprep");
     expect(scoped).not.toContain(">gittunes<");
 
-    const triage = await (await SELF.fetch("https://ops.local/triage?owner=clownware")).text();
+    const triage = await (await SELF.fetch("https://ops.local/?view=priority&owner=clownware")).text();
     expect(triage).toContain("gittunes");
     expect(triage).not.toContain(">deprep<");
   });
@@ -263,13 +281,13 @@ describe("table semantics survive the mobile collapse", () => {
     await seedRepo();
     const noop: Poller = { id: "github", schedule: "hourly", metricSemantics: {}, poll: async () => ({ entities: [], signals: [] }) };
     await runPollers(env, "hourly", { pollers: [noop], now: NOW }); // /health only renders a table once a poller has run
-    for (const path of ["/", "/triage", "/findings", "/health", "/e/repo:clownware/gittunes"]) {
+    for (const path of ["/", "/?view=priority", "/findings", "/health", "/e/repo:clownware/gittunes"]) {
       const html = await (await SELF.fetch(`https://ops.local${path}`)).text();
       expect(html, path).toContain('<table role="table"');
       expect(html, path).toContain('<tr role="row"');
       expect(html, path).toContain('<td role="cell"');
     }
-    const triage = await (await SELF.fetch("https://ops.local/triage")).text();
+    const triage = await (await SELF.fetch("https://ops.local/?view=priority")).text();
     expect(triage).toContain('<th role="columnheader"');
   });
 

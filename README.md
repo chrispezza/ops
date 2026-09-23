@@ -29,8 +29,9 @@ actually worth your next hour.
 
 ## The four views
 
-**Triage** ranks everything by a transparent score, and every score explains
-itself in the `why` column — no black-box ordering.
+**Priority** (`/?view=priority`, the map's other face) ranks everything by a
+transparent score drawn as a bar, and every score explains itself in the `why`
+column — no black-box ordering.
 
 ![Triage: entities ranked by score with an explanation column](docs/screenshots/triage.png)
 

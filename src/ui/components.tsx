@@ -147,3 +147,21 @@ export function SortTh(props: {
     </th>
   );
 }
+
+// The triage score as a bar next to its number — the ranking becomes visible
+// without reading digits. Relative to the highest score on the page (the
+// score has no fixed ceiling: weights live in /settings), which the label
+// says so the bar cannot be mistaken for a percentage.
+export function ScoreBar(props: { total: number; max: number }) {
+  if (props.total <= 0) return null;
+  const w = 40;
+  const h = 5;
+  const fill = Math.max(2, Math.round((props.total / Math.max(props.max, 1)) * w));
+  return (
+    <svg class="scorebar" width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`score ${props.total}; highest on this page ${props.max}`}>
+      <title>score {props.total} · highest on this page {props.max}</title>
+      <rect class="scorebar-track" x="0" y="0" width={w} height={h} />
+      <rect class="scorebar-fill" x="0" y="0" width={fill} height={h} />
+    </svg>
+  );
+}
