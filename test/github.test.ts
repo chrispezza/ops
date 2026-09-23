@@ -290,6 +290,60 @@ describe("github poller", () => {
     expect(flagged?.url).toContain("label%3Ap0");
 
     expect(sig("repo:clownware/unlabeled", "issues.flagged")).toMatchObject({ valueNum: 0, severity: 0 });
+
+    // the board's cards: one JSON row per repo, worst label first, never a finding
+    const cards = sig("repo:clownware/eat-local", "issues.cards");
+    expect(cards?.severity ?? 0).toBe(0);
+    expect(cards?.valueNum).toBe(3);
+    const parsed = JSON.parse(cards?.valueText ?? "[]") as { n: number; l: string; s: number; t: string; c: number; u: number }[];
+    expect(parsed.map((c) => [c.n, c.l, c.s])).toEqual([
+      [51, "p0", 3],
+      [10, "P1", 2],
+      [53, "P2", 1],
+    ]);
+    expect(parsed[0]?.t).toBe("plaintext Kit API key committed in .env — rotate and purge history before launch");
+    expect(parsed[0]?.c).toBeLessThan(parsed[0]?.u ?? 0);
+    expect(sig("repo:clownware/unlabeled", "issues.cards")?.valueText).toBeUndefined();
+  });
+
+  it("emits PR cards and weekly velocity, saying so when the velocity page is full", async () => {
+    const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/ops",
+            url: "https://github.com/clownware/ops",
+            pullRequests: {
+              totalCount: 3,
+              nodes: [
+                { number: 70, title: "feat(board): the board", createdAt: daysAgo(2), isDraft: true, author: { login: "chrispezza" } },
+                { number: 71, title: "bump hono from 3.1.0 to 4.0.0", createdAt: daysAgo(1), author: { login: "dependabot" } },
+                { number: 72, title: "fix: a thing", createdAt: daysAgo(20), isDraft: false, author: null },
+              ],
+            },
+            closedIssues: { nodes: [{ closedAt: daysAgo(1) }, { closedAt: daysAgo(3) }, { closedAt: daysAgo(12) }, { closedAt: null }] },
+            mergedPrs: { nodes: Array.from({ length: 20 }, () => ({ mergedAt: daysAgo(2) })) },
+          }),
+        ]),
+      ),
+    );
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const sig = (metric: string) => result.signals.find((s) => s.metric === metric);
+
+    const cards = JSON.parse(sig("prs.cards")?.valueText ?? "[]") as { n: number; a: string; d: boolean; b: boolean; m?: string }[];
+    expect(cards.map((c) => [c.n, c.a, c.d, c.b, c.m])).toEqual([
+      [70, "chrispezza", true, false, undefined],
+      [71, "dependabot", false, true, "hono 3→4"],
+      [72, "", false, false, undefined],
+    ]);
+    expect(sig("prs.cards")?.severity ?? 0).toBe(0);
+
+    // velocity counts only the trailing week; a full page is an "at least"
+    expect(sig("issues.closed_7d")?.valueNum).toBe(2);
+    expect(sig("prs.merged_7d")?.valueNum).toBe(20);
+    expect(result.notes).toEqual(["clownware/ops: at least 20 PRs merged this week (page cap)"]);
   });
 
   it("emits release age, CI duration, and fail streak when the wider grants respond", async () => {
