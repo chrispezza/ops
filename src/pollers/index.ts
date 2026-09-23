@@ -10,6 +10,10 @@ import { uptime } from "./uptime";
 import { xUsage } from "./x-usage";
 
 // The whole "plugin system" — ADR-003: static array over dynamic registry.
-// uptime runs after github so a fresh deployment has homepages to check;
-// judge does the same, deriving its repo list from what github recorded.
-export const POLLERS: Poller[] = [github, uptime, judge, anthropicUsage, claudeCode, openaiCosts, xUsage, manifests, cloudflare];
+// Order is load-bearing. uptime runs after github so a fresh deployment has
+// homepages to check. judge runs LAST: it is advisory (ADR-006) and the one
+// poller whose cost scales with the backlog, and while it ran first it spent
+// the invocation's subrequest budget and took spend, manifests and the D1
+// budget watchers dark for five days (#68). Its repo list comes from what
+// github recorded, which any position after github satisfies.
+export const POLLERS: Poller[] = [github, uptime, anthropicUsage, claudeCode, openaiCosts, xUsage, manifests, cloudflare, judge];

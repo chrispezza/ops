@@ -3,6 +3,13 @@
 	"name": "ops",
 	"main": "src/index.tsx",
 	"compatibility_date": "2026-07-30",
+	// Declared, not assumed (#68): the daily cron runs every daily poller in one
+	// invocation, and judge alone makes a few hundred calls. Workers Paid
+	// defaults to 10,000; the 1000-request ceiling the free plan and the old
+	// default imposed is what starved the pollers after judge from 09-19 to 09-23.
+	"limits": {
+		"subrequests": 10000
+	},
 	"assets": {
 		"directory": "./public"
 	},
