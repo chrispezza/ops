@@ -34,6 +34,11 @@ export const LABEL_SEVERITY: Record<string, 0 | 1 | 2 | 3> = {
 // idle count is exact up to the cap; PRs oldest-first for the same reason.
 const ISSUE_PAGE = 30;
 const PR_PAGE = 20;
+// Velocity reads the most recently updated closed issues and merged PRs and
+// counts the ones inside the trailing week. A repo that closed more than a
+// page in a week is reported in notes as "at least".
+const VELOCITY_PAGE = 20;
+const WEEK = 7 * 86_400;
 
 // 25 repos/page: GitHub 502s expensive GraphQL queries, and this one carries
 // vuln nodes + blob lookups + CI rollups per repo — smaller pages keep each
@@ -61,6 +66,12 @@ const QUERY = /* GraphQL */ `
             totalCount
             nodes { number title createdAt updatedAt labels(first: 10) { nodes { name } } }
           }
+          closedIssues: issues(states: CLOSED, first: ${VELOCITY_PAGE}, orderBy: { field: UPDATED_AT, direction: DESC }) {
+            nodes { closedAt }
+          }
+          mergedPrs: pullRequests(states: MERGED, first: ${VELOCITY_PAGE}, orderBy: { field: UPDATED_AT, direction: DESC }) {
+            nodes { mergedAt }
+          }
           refs(refPrefix: "refs/heads/") { totalCount }
           vulnerabilityAlerts(states: OPEN, first: 50) {
             totalCount
@@ -70,7 +81,7 @@ const QUERY = /* GraphQL */ `
           }
           pullRequests(states: OPEN, first: ${PR_PAGE}, orderBy: { field: CREATED_AT, direction: ASC }) {
             totalCount
-            nodes { number title createdAt author { login } }
+            nodes { number title createdAt isDraft author { login } }
           }
           defaultBranchRef {
             name
@@ -104,7 +115,30 @@ interface PullRequestNode {
   number: number;
   title: string;
   createdAt: string;
+  isDraft?: boolean;
   author: { login: string } | null;
+}
+
+// Board cards (src/core/board.ts) are built from these; the shape is the
+// stored contract for issues.cards / prs.cards value_text. Short keys on
+// purpose — one JSON row per repo per hour, kept small.
+export interface IssueCard {
+  n: number; // issue number
+  t: string; // title, truncated
+  l: string; // the severity label as written on GitHub (p0, P1 …)
+  s: 1 | 2 | 3; // LABEL_SEVERITY of that label
+  c: number; // createdAt, epoch seconds
+  u: number; // updatedAt, epoch seconds
+}
+
+export interface PrCard {
+  n: number;
+  t: string;
+  a: string; // author login
+  c: number; // createdAt, epoch seconds
+  d: boolean; // draft
+  b: boolean; // Dependabot
+  m?: string; // major bump summary ("hono 3→4") when Dependabot proposes one
 }
 
 interface RepoNode {
@@ -122,6 +156,8 @@ interface RepoNode {
   primaryLanguage: { name: string } | null;
   repositoryTopics: { nodes: { topic: { name: string } }[] };
   issues: { totalCount: number; nodes?: IssueNode[] };
+  closedIssues?: { nodes?: { closedAt: string | null }[] } | null;
+  mergedPrs?: { nodes?: { mergedAt: string | null }[] } | null;
   refs?: { totalCount: number } | null;
   pullRequests: { totalCount: number; nodes?: PullRequestNode[] };
   vulnerabilityAlerts: {
@@ -220,6 +256,16 @@ export function majorBump(title: string): { name: string; from: number; to: numb
 }
 
 const daysSince = (iso: string, now: number): number => Math.floor((now - Math.floor(Date.parse(iso) / 1000)) / 86_400);
+const epoch = (iso: string): number => Math.floor(Date.parse(iso) / 1000);
+const trimTitle = (t: string): string => (t.length > 80 ? `${t.slice(0, 77)}…` : t);
+
+// Count of timestamps inside the trailing week from a page of the most
+// recently updated closed/merged items. Returns whether the page was full of
+// in-window items, i.e. the true count may be higher.
+function weekCount(nodes: (string | null)[], now: number): { count: number; capped: boolean } {
+  const inWeek = nodes.filter((iso): iso is string => iso != null && now - epoch(iso) < WEEK);
+  return { count: inWeek.length, capped: nodes.length >= VELOCITY_PAGE && inWeek.length === nodes.length };
+}
 
 export const github: Poller = {
   id: "github",
@@ -238,6 +284,10 @@ export const github: Poller = {
     "issues.new_7d": "state",
     "issues.oldest_days": "state",
     "issues.flagged": "state",
+    "issues.cards": "state",
+    "issues.closed_7d": "state",
+    "prs.cards": "state",
+    "prs.merged_7d": "state",
     "repo.branches": "state",
     "docs.score": "state",
     "release.age_days": "state",
@@ -403,6 +453,37 @@ export const github: Poller = {
           observedAt: now,
           dedupeKey: hourBucket,
         });
+        // The board's issue cards: every open issue carrying a severity label,
+        // worst first, with the timestamps the columns need. issues.flagged
+        // stays the finding (it carries the severity); this row carries the
+        // detail and never scores, so it stays off /findings.
+        const issueCards: IssueCard[] = issueNodes
+          .flatMap((i) => {
+            const f = flagged.find((x) => x.number === i.number);
+            return f ? [{ n: i.number, t: trimTitle(i.title), l: f.label, s: f.severity, c: epoch(i.createdAt), u: epoch(i.updatedAt) }] : [];
+          })
+          .sort((a, b) => b.s - a.s || a.n - b.n);
+        signals.push({
+          entityId: id,
+          metric: "issues.cards",
+          valueNum: issueCards.length,
+          valueText: issueCards.length > 0 ? JSON.stringify(issueCards) : undefined,
+          url: `${repo.url}/issues`,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
+        // Velocity: what actually shipped this week, so "what next" has a
+        // capacity check next to the backlog.
+        const closed = weekCount((repo.closedIssues?.nodes ?? []).map((n) => n.closedAt), now);
+        if (closed.capped) notes.push(`${repo.nameWithOwner}: at least ${closed.count} issues closed this week (page cap)`);
+        signals.push({
+          entityId: id,
+          metric: "issues.closed_7d",
+          valueNum: closed.count,
+          url: `${repo.url}/issues?q=${encodeURIComponent("is:issue is:closed sort:updated-desc")}`,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
         const weekAgo = new Date((now - 7 * 86_400) * 1000).toISOString().slice(0, 10);
         signals.push({
           entityId: id,
@@ -503,6 +584,40 @@ export const github: Poller = {
         const majors = botPrs.flatMap((pr) => {
           const bump = majorBump(pr.title);
           return bump ? [`#${pr.number} ${bump.name} ${bump.from}→${bump.to}`] : [];
+        });
+        // PR cards: every open PR, human and bot alike — the board decides
+        // which column each one lands in from age, draft state and the bump.
+        const prCards: PrCard[] = prNodes.map((pr) => {
+          const bump = majorBump(pr.title);
+          const bot = isDependabot(pr);
+          return {
+            n: pr.number,
+            t: trimTitle(pr.title),
+            a: pr.author?.login ?? "",
+            c: epoch(pr.createdAt),
+            d: pr.isDraft === true,
+            b: bot,
+            ...(bot && bump ? { m: `${bump.name} ${bump.from}→${bump.to}` } : {}),
+          };
+        });
+        signals.push({
+          entityId: id,
+          metric: "prs.cards",
+          valueNum: prCards.length,
+          valueText: prCards.length > 0 ? JSON.stringify(prCards) : undefined,
+          url: `${repo.url}/pulls`,
+          observedAt: now,
+          dedupeKey: hourBucket,
+        });
+        const merged = weekCount((repo.mergedPrs?.nodes ?? []).map((n) => n.mergedAt), now);
+        if (merged.capped) notes.push(`${repo.nameWithOwner}: at least ${merged.count} PRs merged this week (page cap)`);
+        signals.push({
+          entityId: id,
+          metric: "prs.merged_7d",
+          valueNum: merged.count,
+          url: `${repo.url}/pulls?q=${encodeURIComponent("is:pr is:merged sort:updated-desc")}`,
+          observedAt: now,
+          dedupeKey: hourBucket,
         });
         signals.push({
           entityId: id,
