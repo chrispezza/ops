@@ -769,3 +769,40 @@ p.attention .attention-more-2 { margin-left: 0; }
   .board { grid-template-columns: 1fr; }
   .column-why { min-height: 0; }
 }
+
+/* Findings grid view: entities × domains. Its own table class — the .rows
+   mobile collapse would turn a grid into a list — with sideways scroll. */
+.view-toggle { display: inline-flex; gap: var(--space-2); margin-left: auto; font-size: var(--text-sm); }
+.view-toggle a { color: hsl(var(--fg-muted)); }
+.view-toggle a.active { color: hsl(var(--fg)); text-decoration: underline; text-decoration-color: hsl(var(--accent)); }
+.heat-scroll { overflow-x: auto; }
+table.heat { border-collapse: collapse; font-size: var(--text-xs); }
+table.heat th {
+  text-align: left;
+  font-weight: 500;
+  color: hsl(var(--fg-muted));
+  padding: var(--space-1) var(--space-2);
+  white-space: nowrap;
+}
+table.heat th a { color: inherit; }
+table.heat th.heat-entity { color: hsl(var(--fg)); position: sticky; left: 0; background: hsl(var(--bg)); }
+table.heat th.heat-entity a { color: hsl(var(--fg)); font-weight: 500; }
+table.heat tr:not(:first-child) th, table.heat td { border-top: 1px solid hsl(var(--border)); }
+td.heat-cell { padding: 0; text-align: center; min-width: 40px; }
+td.heat-cell a {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  color: hsl(var(--fg-muted));
+  text-decoration: none;
+}
+/* the fill is the data: severity hue at low alpha so text stays readable in
+   both registers, the digit carries the value for anyone who cannot see hue */
+td.heat-cell[data-sev="1"] a { background: hsl(var(--sev-1) / 0.18); color: hsl(var(--fg)); }
+td.heat-cell[data-sev="2"] a { background: hsl(var(--sev-2) / 0.28); color: hsl(var(--fg)); }
+td.heat-cell[data-sev="3"] a { background: hsl(var(--sev-3) / 0.38); color: hsl(var(--fg)); font-weight: 700; }
+td.heat-cell[data-sev="4"] a { background: hsl(var(--sev-4) / 0.5); color: hsl(var(--fg)); font-weight: 700; }
+/* below the severity floor: shape without alarm */
+td.heat-cell.quiet a { background: hsl(var(--bg-sunken)); color: hsl(var(--fg-muted)); font-weight: 400; }
+td.heat-cell.none { background: transparent; }
+td.heat-cell a:hover { outline: 1px solid hsl(var(--border-strong)); outline-offset: -1px; }

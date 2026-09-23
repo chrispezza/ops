@@ -14,6 +14,7 @@ import {
 } from "./core/derive";
 import { BOARD_WINDOW_DAYS, buildBoard } from "./core/board";
 import { buildDigest, notifyDigest, parseSinceDays, renderDigestMarkdown } from "./core/digest";
+import { buildHeatmap } from "./core/heatmap";
 import { notifyNewAlerts } from "./core/notify";
 import { compactSignals } from "./core/retention";
 import {
@@ -345,11 +346,24 @@ app.get("/findings", async (c) => {
     category: c.req.query("category") || undefined,
     group: c.req.query("group") || undefined,
     sort: c.req.query("sort") || undefined,
+    view: c.req.query("view") === "heat" ? "heat" : undefined,
   };
-  const [rows, health] = await Promise.all([findings(c.env.DB, filters), pollerHealth(c.env.DB)]);
+  // the grid reads every latest row (severity 0 cells are the shape of the
+  // portfolio); the list only reads what the floor admits
+  const [rows, health, views] = await Promise.all([
+    filters.view ? Promise.resolve([]) : findings(c.env.DB, filters),
+    pollerHealth(c.env.DB),
+    filters.view ? entitiesWithLatest(c.env.DB) : Promise.resolve(undefined),
+  ]);
   return c.html(
     <Layout path="/findings" title="Findings" health={health} now={now}>
-      <FindingsPage rows={rows} filters={filters} stale={staleSources(health)} now={now} />
+      <FindingsPage
+        rows={rows}
+        filters={filters}
+        heatmap={views ? buildHeatmap(views, filters) : undefined}
+        stale={staleSources(health)}
+        now={now}
+      />
     </Layout>,
   );
 });
