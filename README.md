@@ -45,6 +45,13 @@ split into "act now" and "plan".
 
 ![Findings: severity-graded feed split into act-now and plan](docs/screenshots/findings.png)
 
+**Board** (`/board`) is the same severity feed as a derived kanban: Now, Next
+and Later are the findings bands at issue and PR granularity, In flight shows
+open human PRs and recently pushed repos, and Done this week shows what closed,
+merged or resolved. Columns are computed from stored severity on every load;
+nothing is draggable, because Ops never writes upstream — relabel the issue
+or merge the PR on GitHub and the next poll moves the card.
+
 **Map** (the first screenshot) is the portfolio overview, grouped by category,
 with an attention rail across the top. **Health** and **Settings** round it out:
 per-poller status with error text, and budget/weight configuration.

@@ -15,6 +15,7 @@ Companion to `ops-spec.md`. Defines pages, URLs, layouts, and states. Design phi
 | Route | View | Params |
 |---|---|---|
 | `/` | Project map (home) | `category`, `owner`, `q` |
+| `/board` | Derived board (now / next / later / in flight / done) | `owner`, `category`, `q` |
 | `/triage` | Ranked worklist | `kind`, `category`, `min_severity` |
 | `/spend` | Consumptive burn | `window` (30d default), `entity` |
 | `/findings` | Cross-cutting audit lens | `min_severity` (2), `domain` (metric prefix), `category` |
@@ -22,7 +23,7 @@ Companion to `ops-spec.md`. Defines pages, URLs, layouts, and states. Design phi
 | `/settings` | Budgets + triage weights | — |
 | `/health` | Poller status board | — |
 
-Nav: single top bar — `Map · Triage · Spend · Findings · Health` — plus a global freshness chip (worst-case staleness across sources, links to `/health`).
+Nav: single top bar — `Map · Board · Triage · Spend · Findings · Digest · Health · Settings` — plus a global freshness chip (worst-case staleness across sources, links to `/health`).
 
 ## 2. Page specs
 
@@ -77,6 +78,20 @@ One row per poller: last run, last success, duration, entities/signals written, 
 ### 2.7 `/settings`
 
 Two forms (the only writes to Ops-owned data): budget rows (scope/metric/period/limits) and triage weights (the four constants from spec §4.1). Plain POST, full-page render is fine.
+
+### 2.8 `/board`
+
+The findings bands at card granularity, plus the two columns a severity feed cannot show. Five columns, **derived on every render** from stored severity — no board state exists anywhere:
+
+| Column | Derived from |
+|---|---|
+| Now | severity 3+: P0-labelled issues, CI red, site down, critical vulns |
+| Next | severity 2: P1 issues, high vulns, human PRs open 30d+ |
+| Later | severity 1: P2 issues, hygiene and docs gaps, PRs open 14d+, Dependabot major bumps |
+| In flight | human PRs under 14d (drafts included), repos pushed in the last 7d with no open PR |
+| Done this week | issues closed and PRs merged in the trailing 7d, findings that resolved (the digest's list) |
+
+Issue and PR cards come from the `issues.cards` / `prs.cards` rows the GitHub poller stores (one JSON row per repo per hour); a repo without a cards row still gets its `issues.flagged` and `prs.*` findings as cards. Every card links to the issue, PR or finding on GitHub. **Nothing is draggable** — moving a card means changing the system of record (relabel, merge, fix) and the next poll moves it (ADR-001). PR cards carry an age bar scaled to 30 days.
 
 ## 3. States & degradation
 
