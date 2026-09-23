@@ -18,7 +18,7 @@ Companion to `ops-spec.md`. Defines pages, URLs, layouts, and states. Design phi
 | `/board` | Derived board (now / next / later / in flight / done) | `owner`, `category`, `q` |
 | `/triage` | Ranked worklist | `kind`, `category`, `min_severity` |
 | `/spend` | Consumptive burn | `window` (30d default), `entity` |
-| `/findings` | Cross-cutting audit lens | `min_severity` (2), `domain` (metric prefix), `category` |
+| `/findings` | Cross-cutting audit lens | `min_severity` (2), `domain` (metric prefix), `category`, `view` (`heat` = entity × domain grid) |
 | `/e/{entity_id}` | Entity detail | `window` for interval charts |
 | `/settings` | Budgets + triage weights | — |
 | `/health` | Poller status board | — |
@@ -63,6 +63,8 @@ clownbot-gateway   MTD $41.20 / $60   ▁▂▁▄▂▇▂ (30d)   today $2.10 
 ### 2.4 `/findings`
 
 Flat table: severity dot, entity, metric, value, observed_at, deep link. Default `min_severity=2` plus all `audit.*` and `hygiene.*`. `domain` param filters by metric prefix — this is how "SEO audit view" exists at work without any new page. Group-by-entity toggle (param, not JS).
+
+`view=heat` renders the same latest rows as a grid: entities down (worst first), metric domains across (hottest column first), each cell the worst severity that domain carries for the entity, with the digit in the cell and the signals in its title. Cells below the severity floor render quiet so the shape of the portfolio stays visible while the floor picks out the problems. One glance answers "one repo, or one domain everywhere".
 
 ### 2.5 `/e/{entity_id}`
 
