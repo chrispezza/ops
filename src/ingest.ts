@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { classifyD1Error } from "./core/d1-errors";
 import { insertSignals, upsertEntities } from "./core/store";
 import type { EntityUpsert, SignalInsert } from "./pollers/types";
 
@@ -173,7 +174,25 @@ export async function handleIngest(c: Context<{ Bindings: Env }>): Promise<Respo
         { error: 'unknown entity: signals reference entities by id — include the entity in "entities" in the same request' },
         400,
       );
-    return c.json({ error: `insert failed: ${message}` }, 400);
+    // 400 only for what the payload did wrong (#45). A spent allowance or a
+    // D1 restart is retryable, and says when; anything else is ours, not theirs.
+    const failure = classifyD1Error(message, now);
+    if (failure.kind === "quota" || failure.kind === "transient") {
+      c.header("Retry-After", String(failure.retryAfter));
+      return c.json(
+        {
+          error:
+            failure.kind === "quota"
+              ? "dashboard storage unavailable: the D1 account's daily row allowance is spent — retry after 00:00 UTC"
+              : "dashboard storage temporarily unavailable — retry shortly",
+          retryAfter: failure.retryAfter,
+          detail: message,
+        },
+        503,
+      );
+    }
+    if (failure.kind === "constraint") return c.json({ error: `insert rejected: ${message}` }, 400);
+    return c.json({ error: `insert failed: ${message}` }, 500);
   }
   return c.json({ ok: true, entities: payload.entities?.length ?? 0, signals: payload.signals.length }, 202);
 }
