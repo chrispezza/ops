@@ -148,7 +148,10 @@ function AttentionStrip(props: { rows: TriageRow[] }) {
           <Dot severity={r.view.maxSeverity} /> {r.view.name} <span class="num">{r.score.total}</span>
         </a>
       ))}
-      <a href="/triage" class="attention-more">
+      <a href="/board" class="attention-more">
+        board →
+      </a>
+      <a href="/triage" class="attention-more attention-more-2">
         triage →
       </a>
     </p>

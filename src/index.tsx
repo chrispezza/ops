@@ -12,6 +12,7 @@ import {
   emitHygieneSignals,
   evaluateBudgets,
 } from "./core/derive";
+import { BOARD_WINDOW_DAYS, buildBoard } from "./core/board";
 import { buildDigest, notifyDigest, parseSinceDays, renderDigestMarkdown } from "./core/digest";
 import { notifyNewAlerts } from "./core/notify";
 import { compactSignals } from "./core/retention";
@@ -27,6 +28,7 @@ import {
   pollerHealth,
   type PollerHealth,
   putSetting,
+  resolvedInWindow,
   setArchived,
   signalHistory,
   spendByEntity,
@@ -37,6 +39,7 @@ import { runPollers } from "./core/runner";
 import { activityAt, computeScore, hasUsageSemantics } from "./core/score";
 import { handleIngest, tokenMatches } from "./ingest";
 import { FreshnessChip, Layout } from "./ui/layout";
+import { BoardPage } from "./ui/pages/board";
 import { FindingsPage } from "./ui/pages/findings";
 import { EntityPage, HISTORY_PAGE, HistoryRows } from "./ui/pages/entity";
 import { HealthPage } from "./ui/pages/health";
@@ -251,6 +254,32 @@ app.get("/triage", async (c) => {
   return c.html(
     <Layout path="/triage" title="Triage" health={health} now={now}>
       <TriagePage rows={filtered} filters={filters} owners={owners} stale={staleSources(health)} now={now} />
+    </Layout>,
+  );
+});
+
+// The derived board (ux §2.8): the findings bands at card granularity plus
+// in-flight and done. Same scoping params as the map; nothing is stored.
+app.get("/board", async (c) => {
+  const now = epochNow();
+  const filters = {
+    owner: c.req.query("owner") || undefined,
+    category: c.req.query("category") || undefined,
+    q: c.req.query("q") || undefined,
+  };
+  const [views, resolved, health] = await Promise.all([
+    entitiesWithLatest(c.env.DB),
+    resolvedInWindow(c.env.DB, now - BOARD_WINDOW_DAYS * DAY),
+    pollerHealth(c.env.DB),
+  ]);
+  const owners = [...new Set(views.map((v) => v.owner).filter((o): o is string => !!o))].sort();
+  const scoped = views
+    .filter((v) => !filters.owner || v.owner === filters.owner)
+    .filter((v) => !filters.category || v.category === filters.category)
+    .filter((v) => !filters.q || v.name.toLowerCase().includes(filters.q.toLowerCase()));
+  return c.html(
+    <Layout path="/board" title="Board" health={health} now={now}>
+      <BoardPage columns={buildBoard(scoped, resolved, now)} filters={filters} owners={owners} now={now} />
     </Layout>,
   );
 });
