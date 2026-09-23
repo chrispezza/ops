@@ -8,6 +8,8 @@ import {
   insertWatermark,
   latestTotals,
   resolvedInWindow,
+  type SeveritySpan,
+  severitySpans,
   spendWindows,
 } from "./queries";
 
@@ -37,10 +39,25 @@ export const BACKLOG_METRICS = [
   "prs.dependabot_count",
   "prs.dependabot_major",
   "deps.vuln_count",
+  // velocity next to backlog: what shipped in the trailing week is the
+  // capacity check "what next" needs
+  "issues.closed_7d",
+  "prs.merged_7d",
 ] as const;
 
 export interface DigestRaised extends DigestChangeRow {
   from: number | null; // severity at window start; null = first seen in the window
+  onset: number | null; // first observation above the baseline inside the window; null = unknowable
+}
+
+// One bucket per UTC day of the window: findings that first crossed their
+// baseline that day, findings last seen at severity 2+ that day (the hour
+// they resolved is within a poll of that — the hourly cadence makes "last
+// seen high" an honest stand-in for "resolved").
+export interface DigestDay {
+  day: number; // epoch of 00:00 UTC
+  raised: number;
+  resolved: number;
 }
 
 export interface Digest {
@@ -52,6 +69,7 @@ export interface Digest {
   newEntities: ArchivedEntity[];
   spend: { current: number; prior: number };
   backlog: { metric: string; total: number; entities: number }[];
+  timeline: DigestDay[];
 }
 
 // `since=7d` (or a bare `7`), clamped to [1, DIGEST_MAX_DAYS]; anything else is the default.
@@ -63,24 +81,53 @@ export function parseSinceDays(raw: string | undefined): number {
 
 export async function buildDigest(db: D1Database, days: number, now: number): Promise<Digest> {
   const since = now - days * DAY;
-  const [watermark, current, resolved, newEntities, spend, backlog] = await Promise.all([
+  const [watermark, current, resolved, newEntities, spend, backlog, spans] = await Promise.all([
     insertWatermark(db, since),
     currentFindingsWithBaseline(db, since),
     resolvedInWindow(db, since),
     entitiesSince(db, since),
     spendWindows(db, since, days * DAY),
     latestTotals(db, BACKLOG_METRICS),
+    severitySpans(db, since),
   ]);
   const raised = current.flatMap((row): DigestRaised[] => {
     // No pre-window row: new if it was inserted after the window opened,
     // otherwise an in-place row whose earlier severity is unknowable — skip
     // rather than announce a months-old hygiene flag as news every week.
-    if (row.baseline_severity == null) return row.id > watermark ? [{ ...row, from: null }] : [];
-    return row.baseline_severity < row.severity ? [{ ...row, from: row.baseline_severity }] : [];
+    if (row.baseline_severity == null) return row.id > watermark ? [{ ...row, from: null, onset: onsetOf(spans, row, null) }] : [];
+    return row.baseline_severity < row.severity ? [{ ...row, from: row.baseline_severity, onset: onsetOf(spans, row, row.baseline_severity) }] : [];
   });
   const order = new Map<string, number>(BACKLOG_METRICS.map((m, i) => [m, i]));
   backlog.sort((a, b) => (order.get(a.metric) ?? 99) - (order.get(b.metric) ?? 99));
-  return { since, now, days, raised, resolved, newEntities, spend, backlog };
+  return { since, now, days, raised, resolved, newEntities, spend, backlog, timeline: buildTimeline(since, now, raised, resolved, spans) };
+}
+
+// First in-window observation strictly above the baseline; a raised row
+// whose spans are all at or below it (in-place rows overwritten past the
+// window's start) has no honest onset and gets none.
+function onsetOf(spans: SeveritySpan[], row: Pick<DigestChangeRow, "entity_id" | "metric">, from: number | null): number | null {
+  const above = spans.filter((sp) => sp.entity_id === row.entity_id && sp.metric === row.metric && sp.severity > (from ?? 1));
+  return above.length === 0 ? null : Math.min(...above.map((sp) => sp.first_at));
+}
+
+export function buildTimeline(since: number, now: number, raised: DigestRaised[], resolved: DigestResolvedRow[], spans: SeveritySpan[]): DigestDay[] {
+  const dayOf = (t: number) => t - (t % DAY);
+  const first = dayOf(since);
+  const last = dayOf(now);
+  const buckets = new Map<number, DigestDay>();
+  for (let d = first; d <= last; d += DAY) buckets.set(d, { day: d, raised: 0, resolved: 0 });
+  for (const r of raised) {
+    if (r.onset == null) continue;
+    const b = buckets.get(dayOf(r.onset));
+    if (b) b.raised += 1;
+  }
+  for (const r of resolved) {
+    const own = spans.filter((sp) => sp.entity_id === r.entity_id && sp.metric === r.metric);
+    if (own.length === 0) continue;
+    const b = buckets.get(dayOf(Math.max(...own.map((sp) => sp.last_at))));
+    if (b) b.resolved += 1;
+  }
+  return [...buckets.values()];
 }
 
 const isoDay = (epoch: number) => new Date(epoch * 1000).toISOString().slice(0, 10);
@@ -133,6 +180,13 @@ export function renderDigestMarkdown(d: Digest, opsUrl?: string): string {
     ...(d.newEntities.length === 0
       ? ["- none"]
       : d.newEntities.map((e) => `- ${e.name} (${e.kind}${e.category ? `, ${e.category}` : ""}) — ${entityLink(e.id)}`)),
+    "",
+    `## Timeline`,
+    `Per UTC day: findings that crossed their baseline, findings last seen at severity 2+ (resolved within a poll of that).`,
+    "",
+    `| day | raised | resolved |`,
+    `|---|---|---|`,
+    ...d.timeline.filter((t) => t.raised + t.resolved > 0).map((t) => `| ${isoDay(t.day)} | ${t.raised} | ${t.resolved} |`),
     "",
     `## Portfolio now`,
     `Current state across active entities — not a delta.`,

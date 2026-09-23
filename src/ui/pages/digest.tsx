@@ -1,5 +1,5 @@
 import { labelForMetric, SEVERITY_NAMES } from "../../config";
-import { type Digest, DIGEST_MAX_DAYS } from "../../core/digest";
+import { type Digest, type DigestDay, DIGEST_MAX_DAYS } from "../../core/digest";
 import type { SignalRow } from "../../core/queries";
 import { Dot, ExtLink, formatSignalValue, timeAgo } from "../components";
 
@@ -29,6 +29,7 @@ export function DigestPage(props: { digest: Digest; hasToken: boolean; now: numb
           {d.raised.length} raised · {d.resolved.length} resolved · {d.newEntities.length} new · spend ${d.spend.current.toFixed(2)} vs $
           {d.spend.prior.toFixed(2)} prior. Windows run to {DIGEST_MAX_DAYS}d, the retention horizon.
         </p>
+        <Timeline days={d.timeline} />
       </section>
 
       <section class="section">
@@ -161,5 +162,56 @@ function ChangeRow(props: { row: SignalRow & { entity_name: string }; change: st
         <ExtLink url={r.url} />
       </td>
     </tr>
+  );
+}
+
+// The window as a strip: one column per UTC day, raised findings up in the
+// warning hue, resolved down in ink. Server-rendered SVG (ux §2.3); the
+// numbers ride in each column's title and the label, so the picture is never
+// the only copy. Onset is the first observation past the baseline; the
+// resolved day is the last observation at severity 2+ (hourly polls put the
+// true moment within an hour of it).
+function Timeline(props: { days: DigestDay[] }) {
+  const { days } = props;
+  if (days.length === 0) return null;
+  const max = Math.max(1, ...days.map((t) => Math.max(t.raised, t.resolved)));
+  const colW = 14;
+  const gap = 2;
+  const half = 22;
+  const w = days.length * (colW + gap);
+  const h = half * 2 + 1;
+  const iso = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
+  const totals = days.reduce((acc, t) => ({ raised: acc.raised + t.raised, resolved: acc.resolved + t.resolved }), { raised: 0, resolved: 0 });
+  return (
+    <figure class="timeline">
+      <svg
+        class="timeline-strip"
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        role="img"
+        aria-label={`${days.length}-day timeline: ${totals.raised} raised, ${totals.resolved} resolved; peak day ${max}`}
+      >
+        <line class="timeline-axis" x1="0" y1={half + 0.5} x2={w} y2={half + 0.5} />
+        {days.map((t, i) => {
+          const x = i * (colW + gap);
+          const up = Math.round((t.raised / max) * (half - 2));
+          const down = Math.round((t.resolved / max) * (half - 2));
+          return (
+            <g>
+              <title>
+                {iso(t.day)}: {t.raised} raised · {t.resolved} resolved
+              </title>
+              {t.raised > 0 && <rect class="timeline-raised" x={x} y={half - up} width={colW} height={up} />}
+              {t.resolved > 0 && <rect class="timeline-resolved" x={x} y={half + 1} width={colW} height={down} />}
+            </g>
+          );
+        })}
+      </svg>
+      <figcaption class="hint">
+        {iso(days[0]?.day ?? 0)} → {iso(days[days.length - 1]?.day ?? 0)} · ▲ raised (first seen past baseline) · ▼ resolved (last seen at
+        severity 2+) · peak {max}/day
+      </figcaption>
+    </figure>
   );
 }

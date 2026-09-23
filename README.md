@@ -60,8 +60,9 @@ with an attention rail across the top. **Health** and **Settings** round it out:
 per-poller status with error text, and budget/weight configuration.
 
 **Digest** (`/digest?since=7d`) is the same signals read along the time axis:
-findings that appeared or escalated in the window, findings that resolved, new
-entities, the backlog as it stands, and spend against the prior window. A
+a per-day strip of findings raised and resolved, findings that appeared or
+escalated in the window, findings that resolved, new entities, the backlog and
+weekly velocity as they stand, and spend against the prior window. A
 Friday cron pushes the headline through ntfy, and `GET /digest/md` returns the
 digest as markdown behind its own bearer token, so a weekly agent routine can
 fetch the facts and write the narrative without touching GitHub itself.

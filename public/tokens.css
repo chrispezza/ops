@@ -814,3 +814,10 @@ svg.scorebar { vertical-align: middle; margin-left: var(--space-1); }
 svg.scorebar .scorebar-track { fill: hsl(var(--bg-sunken)); }
 svg.scorebar .scorebar-fill { fill: hsl(var(--fg-muted)); }
 table.map-cols col.w-score { width: 96px; }
+
+/* digest timeline: raised up in the warning hue, resolved down in ink */
+figure.timeline { margin: var(--space-2) 0 0; }
+svg.timeline-strip { display: block; max-width: 100%; }
+svg.timeline-strip .timeline-axis { stroke: hsl(var(--border-strong)); stroke-width: 1; }
+svg.timeline-strip .timeline-raised { fill: hsl(var(--sev-2)); }
+svg.timeline-strip .timeline-resolved { fill: hsl(var(--fg-muted)); }
