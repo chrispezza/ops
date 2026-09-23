@@ -6,7 +6,6 @@ import { timeAgo } from "./components";
 const NAV = [
   ["/", "Map"],
   ["/board", "Board"],
-  ["/triage", "Triage"],
   ["/spend", "Spend"],
   ["/findings", "Findings"],
   ["/digest", "Digest"],

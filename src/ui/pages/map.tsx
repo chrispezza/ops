@@ -1,7 +1,7 @@
 import { TOPIC_CATEGORY } from "../../config";
 import type { ArchivedEntity, EntityView } from "../../core/queries";
-import { Chip, Dot, ExtLink, formatSignalValue, newIssueUrl, timeAgo } from "../components";
-import type { TriageRow } from "./triage";
+import { Chip, Dot, ExtLink, formatSignalValue, newIssueUrl, ScoreBar, timeAgo } from "../components";
+import { PRIORITY_VIEW, priorityHref, type TriageFilters, TriagePage, type TriageRow } from "./triage";
 
 // The empty-state hint must name the actual topic — "tag with the matching
 // topic" taught nothing. Derived from TOPIC_CATEGORY so the hint can never
@@ -21,6 +21,30 @@ const SECTIONS: { category: string; title: string; topics: string }[] = [
 
 const ALL_TOPICS = Object.keys(TOPIC_CATEGORY).join(" · ");
 
+// by category (the map) ⇄ by priority (the flattened, scored worklist) —
+// two faces of "/", switched by a param so either is a bookmark (ux §0.1)
+function ViewToggle(props: { priority: boolean; categoryHref: string; priorityHref: string }) {
+  return (
+    <span class="view-toggle" role="group" aria-label="view">
+      <a href={props.categoryHref} class={props.priority ? "" : "active"} aria-current={props.priority ? undefined : "page"}>
+        by category
+      </a>
+      <a href={props.priorityHref} class={props.priority ? "active" : ""} aria-current={props.priority ? "page" : undefined}>
+        by priority
+      </a>
+    </span>
+  );
+}
+
+function categoryHref(f: { q?: string; owner?: string; category?: string }): string {
+  const params = new URLSearchParams();
+  if (f.q) params.set("q", f.q);
+  if (f.owner) params.set("owner", f.owner);
+  if (f.category) params.set("category", f.category);
+  const qs = params.toString();
+  return qs ? `/?${qs}` : "/";
+}
+
 export function MapPage(props: {
   rows: TriageRow[];
   archived: ArchivedEntity[];
@@ -30,10 +54,29 @@ export function MapPage(props: {
   owners: string[];
   stale: ReadonlySet<string>;
   now: number;
+  // present = the priority view: the worklist replaces the category sections
+  priority?: { rows: TriageRow[]; filters: TriageFilters };
 }) {
   const { rows, now, stale } = props;
-  if (rows.length === 0 && !props.q && !props.owner) return <SetupChecklist />;
+  if (rows.length === 0 && !props.q && !props.owner && !props.priority) return <SetupChecklist />;
   const sections = props.category ? SECTIONS.filter((s) => s.category === props.category) : SECTIONS;
+  const maxScore = Math.max(0, ...rows.map((r) => r.score.total));
+
+  if (props.priority) {
+    const f = props.priority.filters;
+    return (
+      <>
+        <TriagePage
+          rows={props.priority.rows}
+          filters={f}
+          owners={props.owners}
+          stale={stale}
+          now={now}
+          viewToggle={<ViewToggle priority categoryHref={categoryHref(f)} priorityHref={priorityHref(f)} />}
+        />
+      </>
+    );
+  }
 
   const known = new Set(SECTIONS.map((s) => s.category));
   // Portfolio sections hold repos; vendor/spend entities get their own section;
@@ -53,6 +96,7 @@ export function MapPage(props: {
         {props.owner && <input type="hidden" name="owner" value={props.owner} />}
         {props.category && <input type="hidden" name="category" value={props.category} />}
         <button type="submit">apply</button>
+        <ViewToggle priority={false} categoryHref={categoryHref(props)} priorityHref={priorityHref({ q: props.q, owner: props.owner, category: props.category })} />
         {/* ux §1: owner is a first-class map param */}
         <span class="owner-toggle">
           <a href={props.q ? `/?q=${encodeURIComponent(props.q)}` : "/"} class={!props.owner ? "active" : ""}>
@@ -93,19 +137,21 @@ export function MapPage(props: {
             rollup={s.category === "plugin_skill" ? skillsRollup(rows) : undefined}
             note={uptimeHint(s.category, rows)}
             stale={stale}
+            maxScore={maxScore}
           />
         ))}
-        {!props.category && vendors.length > 0 && <Section title="Vendor APIs & Keys" rows={vendors} now={now} stale={stale} />}
+        {!props.category && vendors.length > 0 && <Section title="Vendor APIs & Keys" rows={vendors} now={now} stale={stale} maxScore={maxScore} />}
         {!props.category && untagged.length > 0 && (
           <Section
             title="Uncategorized"
             rows={untagged}
             now={now}
             stale={stale}
+            maxScore={maxScore}
             warning={`tag these repos with a topic: ${ALL_TOPICS}`}
           />
         )}
-        {!props.category && other.length > 0 && <Section title="Other" rows={other} now={now} stale={stale} />}
+        {!props.category && other.length > 0 && <Section title="Other" rows={other} now={now} stale={stale} maxScore={maxScore} />}
         {props.archived.length > 0 && (
           <details class="section archived-section">
             <summary>
@@ -151,8 +197,8 @@ function AttentionStrip(props: { rows: TriageRow[] }) {
       <a href="/board" class="attention-more">
         board →
       </a>
-      <a href="/triage" class="attention-more attention-more-2">
-        triage →
+      <a href={`/?view=${PRIORITY_VIEW}`} class="attention-more attention-more-2">
+        by priority →
       </a>
     </p>
   );
@@ -189,6 +235,7 @@ function Section(props: {
   rollup?: string;
   note?: string;
   stale?: ReadonlySet<string>;
+  maxScore: number;
 }) {
   const { title, rows, now } = props;
   const stale = props.stale ?? new Set<string>();
@@ -220,7 +267,7 @@ function Section(props: {
               <col class="w-links" />
             </colgroup>
             {rows.map((r) => (
-              <Row row={r} now={now} stale={stale} />
+              <Row row={r} now={now} stale={stale} maxScore={props.maxScore} />
             ))}
           </table>
           {props.note && <p class="hint">{props.note}</p>}
@@ -230,7 +277,7 @@ function Section(props: {
   );
 }
 
-function Row(props: { row: TriageRow; now: number; stale: ReadonlySet<string> }) {
+function Row(props: { row: TriageRow; now: number; stale: ReadonlySet<string>; maxScore: number }) {
   const { view: e, score } = props.row;
   return (
     <tr role="row" class="row" data-href={`/e/${e.id}`}>
@@ -248,8 +295,8 @@ function Row(props: { row: TriageRow; now: number; stale: ReadonlySet<string> })
         <Chips row={props.row} now={props.now} stale={props.stale} />
       </td>
       {/* the map has no header row, so the tooltip must say what the naked number IS */}
-      <td role="cell" class="num" title={`triage score${score.parts.length ? ` — ${score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ")}` : ""}`}>
-        {score.total > 0 ? score.total : ""}
+      <td role="cell" class="num c-score" title={`triage score${score.parts.length ? ` — ${score.parts.map((p) => `+${p.points} ${p.label}`).join(" · ")}` : ""}`}>
+        {score.total > 0 ? score.total : ""} <ScoreBar total={score.total} max={props.maxScore} />
       </td>
       <td role="cell" class="c-links">
         {/* the uptime signal's url IS the deployed site — one link, straight to prod */}

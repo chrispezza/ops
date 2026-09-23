@@ -1,7 +1,7 @@
 import { labelForMetric } from "../../config";
 import type { EntityView } from "../../core/queries";
 import { activityAt, type Score } from "../../core/score";
-import { Chip, Dot, ExtLink, newIssueUrl, safeHref, SortTh } from "../components";
+import { Chip, Dot, ExtLink, newIssueUrl, safeHref, ScoreBar, SortTh } from "../components";
 
 export interface TriageRow {
   view: EntityView;
@@ -18,16 +18,24 @@ export interface TriageFilters {
   sort?: string;
 }
 
-function sortHref(f: TriageFilters, sort: string): string {
+// The priority view is the map's other face (ux §2.2, open question 1
+// resolved): same URL, `view=priority`, so every link here carries it.
+export const PRIORITY_VIEW = "priority";
+
+export function priorityHref(f: TriageFilters, over: Partial<TriageFilters> = {}): string {
+  const m = { ...f, ...over };
   const params = new URLSearchParams();
-  if (f.q) params.set("q", f.q);
-  if (f.kind) params.set("kind", f.kind);
-  if (f.category) params.set("category", f.category);
-  if (f.owner) params.set("owner", f.owner);
-  if (f.minSeverity) params.set("min_severity", String(f.minSeverity));
-  params.set("sort", sort);
-  return `/triage?${params.toString()}`;
+  params.set("view", PRIORITY_VIEW);
+  if (m.q) params.set("q", m.q);
+  if (m.kind) params.set("kind", m.kind);
+  if (m.category) params.set("category", m.category);
+  if (m.owner) params.set("owner", m.owner);
+  if (m.minSeverity) params.set("min_severity", String(m.minSeverity));
+  if (m.sort) params.set("sort", m.sort);
+  return `/?${params.toString()}`;
 }
+
+const sortHref = (f: TriageFilters, sort: string): string => priorityHref(f, { sort });
 
 // The daily driver: the map flattened and sorted by pain (ux §2.2).
 export function TriagePage(props: {
@@ -36,10 +44,12 @@ export function TriagePage(props: {
   owners: string[];
   stale?: ReadonlySet<string>;
   now: number;
+  viewToggle?: unknown; // the map's category ⇄ priority switch, rendered inside the form
 }) {
   return (
     <>
-      <form class="filters" hx-get="/triage" hx-target="#triage-table" hx-select="#triage-table" hx-swap="outerHTML" hx-push-url="true">
+      <form class="filters" hx-get="/" hx-target="#triage-table" hx-select="#triage-table" hx-swap="outerHTML" hx-push-url="true">
+        <input type="hidden" name="view" value={PRIORITY_VIEW} />
         <input type="search" name="q" placeholder="filter… ( / )" value={props.filters.q ?? ""} aria-label="filter entities" />
         {/* sort isn't a form control — without the hidden field, applying any
             filter silently reset the sort the user had chosen */}
@@ -68,6 +78,7 @@ export function TriagePage(props: {
           ))}
         </select>
         <button type="submit">apply</button>
+        {props.viewToggle}
       </form>
       <TriageTable rows={props.rows} filters={props.filters} stale={props.stale} now={props.now} />
     </>
@@ -81,6 +92,7 @@ export function TriageTable(props: {
   now: number;
 }) {
   const sort = props.filters.sort ?? "score";
+  const maxScore = Math.max(0, ...props.rows.map((r) => r.score.total));
   if (props.rows.length === 0) {
     return (
       <div id="triage-table">
@@ -114,13 +126,13 @@ export function TriageTable(props: {
         <th role="columnheader" scope="col" />
       </tr>
       {props.rows.map((r) => (
-        <Row row={r} now={props.now} stale={props.stale} />
+        <Row row={r} now={props.now} stale={props.stale} maxScore={maxScore} />
       ))}
     </table>
   );
 }
 
-function Row(props: { row: TriageRow; now: number; stale?: ReadonlySet<string> }) {
+function Row(props: { row: TriageRow; now: number; stale?: ReadonlySet<string>; maxScore: number }) {
   const { view: e, score } = props.row;
   const worst = Object.values(e.latest)
     .filter((s) => s.severity > 0)
@@ -159,7 +171,9 @@ function Row(props: { row: TriageRow; now: number; stale?: ReadonlySet<string> }
           </details>
         )}
       </td>
-      <td role="cell" class="num">{score.total}</td>
+      <td role="cell" class="num c-score">
+        {score.total} <ScoreBar total={score.total} max={props.maxScore} />
+      </td>
       <td role="cell" class="num c-kind">
         {e.latest["issues.open"]?.value_num != null && (
           <a href={safeHref(e.latest["issues.open"]?.url) ?? `/e/${e.id}`}>{e.latest["issues.open"]?.value_num}</a>

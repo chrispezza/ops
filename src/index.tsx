@@ -48,7 +48,7 @@ import { MapPage } from "./ui/pages/map";
 import { DigestPage } from "./ui/pages/digest";
 import { SettingsPage, type SettingsDraft } from "./ui/pages/settings";
 import { type SpendEntity, SpendPage } from "./ui/pages/spend";
-import { TriagePage, type TriageRow } from "./ui/pages/triage";
+import { PRIORITY_VIEW, type TriageRow } from "./ui/pages/triage";
 
 // Spec §5: hourly cron runs hourly pollers, daily cron (~06:00 ET) runs daily.
 // The weekly cron (Friday ~08:00 ET) runs no pollers — it pushes the 7d digest.
@@ -200,11 +200,15 @@ function staleSources(health: PollerHealth[]): ReadonlySet<string> {
   return new Set(health.filter((h) => (h.lastRun?.severity ?? 0) >= 3).map((h) => h.name));
 }
 
+// One URL, two faces (ux §2.1–2.2, open question 1 resolved): by category is
+// the map, ?view=priority is the same rows flattened and sorted by score with
+// the worklist's own filters and column sorts.
 app.get("/", async (c) => {
   const now = epochNow();
   const q = c.req.query("q")?.toLowerCase();
   const owner = c.req.query("owner") || undefined;
-  const category = c.req.query("category") || undefined; // ux §1 promised this param
+  const category = c.req.query("category") || undefined; // ux §1: /?category=web_app narrows to one section
+  const priority = c.req.query("view") === PRIORITY_VIEW;
   const [rows, health, archived] = await Promise.all([
     scoredViews(c.env.DB, now),
     pollerHealth(c.env.DB),
@@ -214,8 +218,28 @@ app.get("/", async (c) => {
   const filtered = rows
     .filter((r) => !q || r.view.name.toLowerCase().includes(q))
     .filter((r) => !owner || r.view.owner === owner);
+  const priorityView = (() => {
+    if (!priority) return undefined;
+    const filters = {
+      kind: c.req.query("kind") || undefined,
+      category,
+      owner,
+      minSeverity: clampParam(c.req.query("min_severity"), 0, 0, 4),
+      q: c.req.query("q") || undefined,
+      sort: c.req.query("sort") || undefined,
+    };
+    const worklist = sortRows(
+      filtered
+        .filter((r) => !filters.kind || r.view.kind === filters.kind)
+        .filter((r) => !filters.category || r.view.category === filters.category)
+        .filter((r) => r.view.maxSeverity >= (filters.minSeverity ?? 0)),
+      filters.sort ?? "score",
+      now,
+    );
+    return { rows: worklist, filters };
+  })();
   return c.html(
-    <Layout path="/" title="Map" health={health} now={now}>
+    <Layout path="/" title={priority ? "Priority" : "Map"} health={health} now={now}>
       <MapPage
         rows={filtered}
         archived={archived}
@@ -225,38 +249,18 @@ app.get("/", async (c) => {
         owners={owners}
         stale={staleSources(health)}
         now={now}
+        priority={priorityView}
       />
     </Layout>,
   );
 });
 
-app.get("/triage", async (c) => {
-  const now = epochNow();
-  const filters = {
-    kind: c.req.query("kind") || undefined,
-    category: c.req.query("category") || undefined,
-    owner: c.req.query("owner") || undefined,
-    minSeverity: clampParam(c.req.query("min_severity"), 0, 0, 4),
-    q: c.req.query("q") || undefined,
-    sort: c.req.query("sort") || undefined,
-  };
-  const [rows, health] = await Promise.all([scoredViews(c.env.DB, now), pollerHealth(c.env.DB)]);
-  const owners = distinctOwners(rows);
-  const filtered = sortRows(
-    rows
-      .filter((r) => !filters.kind || r.view.kind === filters.kind)
-      .filter((r) => !filters.category || r.view.category === filters.category)
-      .filter((r) => !filters.owner || r.view.owner === filters.owner)
-      .filter((r) => r.view.maxSeverity >= (filters.minSeverity ?? 0))
-      .filter((r) => !filters.q || r.view.name.toLowerCase().includes(filters.q.toLowerCase())),
-    filters.sort ?? "score",
-    now,
-  );
-  return c.html(
-    <Layout path="/triage" title="Triage" health={health} now={now}>
-      <TriagePage rows={filtered} filters={filters} owners={owners} stale={staleSources(health)} now={now} />
-    </Layout>,
-  );
+// The worklist moved into the map; bookmarks, alerts and muscle memory keep
+// working. The query string rides along so /triage?owner=x lands scoped.
+app.get("/triage", (c) => {
+  const url = new URL(c.req.url);
+  url.searchParams.set("view", PRIORITY_VIEW);
+  return c.redirect(`/?${url.searchParams.toString()}`, 301);
 });
 
 // The derived board (ux §2.8): the findings bands at card granularity plus
