@@ -173,6 +173,12 @@ export async function detectSpendAnomalies(db: D1Database, now: number): Promise
   await insertSignals(db, "core", signals);
 }
 
+// GLOB, not LIKE: LIKE is case-insensitive and cannot seek idx_signals_metric
+// (BINARY collation), which made this a full scan of signals every pass (#60).
+export const HYGIENE_RECONCILE_SQL = `SELECT s.entity_id, s.metric, s.dedupe_key, e.category FROM signals s
+  JOIN entities e ON e.id = s.entity_id
+  WHERE (s.metric GLOB 'hygiene.missing.*' OR s.metric = 'hygiene.missing_metric') AND s.severity > 0`;
+
 // Spec §2.4: after each poll cycle, absence of an expected metric becomes a
 // queryable signal. Dedupe on the missing metric name keeps exactly one live
 // hygiene row per (entity, expected metric); when the metric appears later the
@@ -221,11 +227,7 @@ export async function emitHygieneSignals(
   // category changed) — otherwise a stale severity-1 row stays "latest" forever.
   // Matches the legacy packed name too, sweeping old deployments clean.
   const existing = await db
-    .prepare(
-      `SELECT s.entity_id, s.metric, s.dedupe_key, e.category FROM signals s
-       JOIN entities e ON e.id = s.entity_id
-       WHERE (s.metric LIKE 'hygiene.missing.%' OR s.metric = 'hygiene.missing_metric') AND s.severity > 0`,
-    )
+    .prepare(HYGIENE_RECONCILE_SQL)
     .all<{ entity_id: string; metric: string; dedupe_key: string; category: string | null }>();
   for (const row of existing.results) {
     const isLegacy = row.metric === "hygiene.missing_metric";
