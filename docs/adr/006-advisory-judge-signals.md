@@ -191,6 +191,13 @@ The binding constraint is not the model's price, which is negligible. It is the
 other daily poller. Shrinking the caps to fit under that ceiling would have
 treated the symptom.
 
+> **2026-09-23 (#68):** sharing that budget went wrong in practice. With judge
+> first among the daily pollers, it hit the ceiling mid-run from 2026-09-19 on,
+> and every poller after it (spend, manifests, the D1 budget watchers) failed
+> until the fix. `limits.subrequests` is now declared in `wrangler.jsonc`
+> (10,000, the Workers Paid default), and judge runs last in `POLLERS`, so an
+> advisory poller can only ever starve itself.
+
 So the poller now remembers, per repo, a **judged span** — every open issue
 numbered `low..high` that carried no severity label at the time has been judged
 — and the **outstanding proposals** it has not seen acted on. Both live in the

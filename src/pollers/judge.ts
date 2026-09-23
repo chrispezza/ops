@@ -501,10 +501,11 @@ export const judge: Poller = {
     let reached = 0;
     let wanted = 0;
     let produced = 0;
-    // The run-wide bound that actually matters. A Workers invocation gets 1000
-    // subrequests and this poller shares them with every other daily poller, so
-    // the ceiling is global rather than per repo: one slow repo with a long
-    // backlog cannot spend the whole pass.
+    // The run-wide bound that actually matters. The daily cron's invocation has
+    // one subrequest budget (limits.subrequests in wrangler.jsonc) shared with
+    // every other daily poller, so the ceiling is global rather than per repo:
+    // one slow repo with a long backlog cannot spend the whole pass. judge runs
+    // last in POLLERS so that if it does hit the ceiling, nothing else pays (#68).
     let budget = MAX_JUDGMENTS;
     if (referenceActors.size === 0) {
       notes.push("JUDGE_REFERENCE_ACTORS unset: calibrating against human labels only");
