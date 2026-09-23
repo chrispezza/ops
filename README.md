@@ -41,7 +41,9 @@ approximating month-to-date).
 ![Spend: month-to-date totals against budget bars, per-vendor sparklines](docs/screenshots/spend.png)
 
 **Findings** is the flat, filterable severity feed across every metric domain —
-split into "act now" and "plan".
+split into "act now" and "plan". Its grid view (`?view=heat`) folds the same
+rows into an entity × domain heatmap, so one glance says whether the problem
+is one repo or one domain everywhere.
 
 ![Findings: severity-graded feed split into act-now and plan](docs/screenshots/findings.png)
 

@@ -1,4 +1,5 @@
-import { labelForMetric } from "../../config";
+import { labelForMetric, SEVERITY_NAMES } from "../../config";
+import { domainLabel, type Heatmap } from "../../core/heatmap";
 import type { FindingRow } from "../../core/queries";
 import { Dot, ExtLink, formatSignalValue, SortTh, timeAgo } from "../components";
 
@@ -8,17 +9,22 @@ export interface FindingsFilters {
   category?: string;
   group?: string;
   sort?: string;
+  view?: string; // "heat" = the entity × domain grid; anything else = the list
 }
 
-function sortHref(f: FindingsFilters, sort: string): string {
+function findingsHref(f: FindingsFilters, over: Partial<FindingsFilters>): string {
+  const m = { ...f, ...over };
   const params = new URLSearchParams();
-  if (f.domain) params.set("domain", f.domain);
-  if (f.category) params.set("category", f.category);
-  params.set("min_severity", String(f.minSeverity));
-  if (f.group) params.set("group", f.group);
-  params.set("sort", sort);
+  if (m.domain) params.set("domain", m.domain);
+  if (m.category) params.set("category", m.category);
+  params.set("min_severity", String(m.minSeverity));
+  if (m.group) params.set("group", m.group);
+  if (m.sort) params.set("sort", m.sort);
+  if (m.view) params.set("view", m.view);
   return `/findings?${params.toString()}`;
 }
+
+const sortHref = (f: FindingsFilters, sort: string): string => findingsHref(f, { sort });
 
 // Severity bands turn the flat gradient into urgency classes: what breaks
 // things now, what needs planning, what's routine upkeep.
@@ -31,10 +37,12 @@ const BANDS = [
 export function FindingsPage(props: {
   rows: FindingRow[];
   filters: FindingsFilters;
+  heatmap?: Heatmap; // present when the grid view was asked for
   stale?: ReadonlySet<string>;
   now: number;
 }) {
   const f = props.filters;
+  const heat = f.view === "heat";
   const live = props.rows.filter((r) => !r.entity_archived);
   const archived = props.rows.filter((r) => r.entity_archived);
   return (
@@ -62,10 +70,22 @@ export function FindingsPage(props: {
         <label>
           <input type="checkbox" name="group" value="entity" checked={f.group === "entity"} /> group by entity
         </label>
+        {heat && <input type="hidden" name="view" value="heat" />}
         <button type="submit">apply</button>
+        {/* the view switch is a link pair, not a control: URL is the state (ux §0.1) */}
+        <span class="view-toggle" role="group" aria-label="view">
+          <a href={findingsHref(f, { view: undefined })} class={heat ? "" : "active"} aria-current={heat ? undefined : "page"}>
+            list
+          </a>
+          <a href={findingsHref(f, { view: "heat" })} class={heat ? "active" : ""} aria-current={heat ? "page" : undefined}>
+            grid
+          </a>
+        </span>
       </form>
       <div id="findings-region">
-        {live.length === 0 ? (
+        {heat && props.heatmap ? (
+          <HeatGrid heatmap={props.heatmap} minSeverity={f.minSeverity} now={props.now} />
+        ) : live.length === 0 ? (
           <p class="hint">No findings match. Lower min severity, or clear the domain or category filter.</p>
         ) : f.group === "entity" ? (
           <Grouped rows={live} now={props.now} />
@@ -209,5 +229,53 @@ function Grouped(props: { rows: FindingRow[]; now: number }) {
         </section>
       ))}
     </>
+  );
+}
+
+// Entities down, domains across, worst severity per cell. Cells at or above
+// the severity floor are colored; below it they render as quiet ok marks so
+// the shape of the portfolio stays visible while the floor picks out the
+// problems. Not a .rows table: the mobile collapse would destroy a grid, so
+// it scrolls sideways instead.
+function HeatGrid(props: { heatmap: Heatmap; minSeverity: number; now: number }) {
+  const { heatmap } = props;
+  if (heatmap.rows.length === 0) {
+    return <p class="hint">No signals to grid. Clear the domain or category filter, or wait for the first poll.</p>;
+  }
+  const sevWord = (n: number) => SEVERITY_NAMES[n] ?? String(n);
+  return (
+    <div class="heat-scroll">
+      <table class="heat" role="table">
+        <tr role="row">
+          <th role="columnheader" scope="col">entity</th>
+          {heatmap.domains.map((d) => (
+            <th role="columnheader" scope="col" title={d}>
+              <a href={`/findings?domain=${encodeURIComponent(d)}&min_severity=0`}>{domainLabel(d)}</a>
+            </th>
+          ))}
+        </tr>
+        {heatmap.rows.map((row) => (
+          <tr role="row">
+            <th role="rowheader" scope="row" class="heat-entity">
+              <Dot severity={row.maxSeverity} /> <a href={`/e/${row.entityId}`}>{row.entityName}</a>
+            </th>
+            {row.cells.map((cell) => {
+              if (cell.severity < 0) return <td role="cell" class="heat-cell none" aria-label={`${domainLabel(cell.domain)}: no signal`} />;
+              const quiet = cell.severity < props.minSeverity;
+              const title = cell.signals
+                .map((s) => `${labelForMetric(s.metric)}: ${s.value_text ?? formatSignalValue(s, props.now)} (${sevWord(s.severity)})`)
+                .join("\n");
+              return (
+                <td role="cell" class={quiet ? "heat-cell quiet" : "heat-cell"} data-sev={cell.severity}>
+                  <a href={`/e/${row.entityId}`} title={title} aria-label={`${row.entityName} · ${domainLabel(cell.domain)}: ${sevWord(cell.severity)}`}>
+                    {cell.severity > 0 ? cell.severity : "·"}
+                  </a>
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </table>
+    </div>
   );
 }
