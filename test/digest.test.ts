@@ -109,6 +109,26 @@ describe("buildDigest", () => {
     ]);
   });
 
+  it("buckets the window into days: onset past the baseline up, last seen at 2+ down", async () => {
+    await seed();
+    const d = await buildDigest(env.DB, 7, NOW);
+    const dayOf = (t: number) => t - (t % DAY);
+    // one bucket per UTC day from the window's first day through today
+    expect(d.timeline[0]?.day).toBe(dayOf(NOW - 7 * DAY));
+    expect(d.timeline[d.timeline.length - 1]?.day).toBe(dayOf(NOW));
+    const at = (t: number) => d.timeline.find((b) => b.day === dayOf(t));
+    // gittunes CI went red 2d ago; deprep escalated and newmetric appeared 1d ago
+    expect(at(NOW - 2 * DAY)?.raised).toBe(1);
+    expect(at(NOW - DAY)?.raised).toBe(2);
+    // site was last seen down 3d ago — that is its resolved day
+    expect(at(NOW - 3 * DAY)?.resolved).toBe(1);
+    expect(d.timeline.reduce((n, b) => n + b.raised, 0)).toBe(3);
+    expect(d.timeline.reduce((n, b) => n + b.resolved, 0)).toBe(1);
+    // every raised row knows when it crossed its baseline
+    expect(d.raised.map((r) => r.onset != null)).toEqual([true, true, true]);
+    expect(d.raised.find((r) => r.entity_name === "deprep")?.onset).toBe(NOW - DAY);
+  });
+
   it("treats every finding as new on a fresh database (no watermark yet)", async () => {
     await upsertEntities(env.DB, [{ id: "repo:a/b", kind: "repo", name: "b" }], NOW);
     await insertSignals(env.DB, "github", [sig("repo:a/b", "ci.status", 3, NOW, "sha", { valueText: "failure" })]);
@@ -142,6 +162,8 @@ describe("renderDigestMarkdown", () => {
     expect(md).toContain("- **site** — site status: now up (peaked high) — https://ops.example/e/repo:clownware/site");
     expect(md).toContain("- fresh (repo, web_app) — https://ops.example/e/repo:clownware/fresh");
     expect(md).toContain("| open issues (issues.open) | 12 | 2 |");
+    expect(md).toContain("## Timeline");
+    expect(md).toMatch(/\| \d{4}-\d{2}-\d{2} \| 2 \| 0 \|/); // the day deprep escalated and newmetric appeared
   });
 });
 
@@ -158,6 +180,9 @@ describe("/digest page", () => {
     expect(html).toContain(">fresh<");
     expect(html).toContain("Token configured.");
     expect(html).toContain('href="/digest" class="active"'); // nav entry
+    expect(html).toMatch(/<svg class="timeline-strip"[^>]*aria-label="8-day timeline: 3 raised, 1 resolved; peak day 2"/);
+    expect(html).toContain('class="timeline-raised"');
+    expect(html).toContain('class="timeline-resolved"');
   });
 
   it("clamps an oversized window to the retention horizon", async () => {

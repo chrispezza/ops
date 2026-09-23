@@ -511,3 +511,28 @@ export async function latestTotals(
     .all<{ metric: string; total: number; entities: number }>();
   return res.results;
 }
+
+export interface SeveritySpan {
+  entity_id: string;
+  metric: string;
+  severity: number;
+  first_at: number; // first observation at this severity inside the window
+  last_at: number; // last observation at this severity inside the window
+}
+
+// Per (series, severity) first/last observation at severity ≥ 2 in the
+// window — the digest timeline's raw material. Served by idx_signals_severity
+// (severity, observed_at DESC), so it reads only the window's finding rows,
+// never the whole table; the GROUP BY keeps the result to a few rows per series.
+export async function severitySpans(db: D1Database, since: number): Promise<SeveritySpan[]> {
+  const res = await db
+    .prepare(
+      `SELECT entity_id, metric, severity, MIN(observed_at) AS first_at, MAX(observed_at) AS last_at
+       FROM signals
+       WHERE severity >= 2 AND observed_at >= ?1
+       GROUP BY entity_id, metric, severity`,
+    )
+    .bind(since)
+    .all<SeveritySpan>();
+  return res.results;
+}
