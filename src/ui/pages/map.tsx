@@ -1,20 +1,25 @@
+import { TOPIC_CATEGORY } from "../../config";
 import type { ArchivedEntity, EntityView } from "../../core/queries";
 import { Chip, Dot, ExtLink, formatSignalValue, newIssueUrl, timeAgo } from "../components";
 import type { TriageRow } from "./triage";
 
-// topics mirrors TOPIC_CATEGORY in pollers/github.ts — the empty-state hint
-// must name the actual topic, "tag with the matching topic" taught nothing
-// (and for Tools/Client Projects the topic appeared nowhere in the UI at all)
-const SECTIONS: { category: string; title: string; topics: string }[] = [
-  { category: "static_site", title: "Static Sites", topics: "static-site" },
-  { category: "web_app", title: "Web Apps", topics: "web-app" },
-  { category: "plugin_skill", title: "Plugins · MCPs · Skills", topics: "mcp, skill, or claude-plugin" },
-  { category: "tooling", title: "Tools · Templates · Experiments", topics: "tool or template" },
-  { category: "client_project", title: "Client Projects", topics: "client" },
-];
+// The empty-state hint must name the actual topic — "tag with the matching
+// topic" taught nothing. Derived from TOPIC_CATEGORY so the hint can never
+// drift from what the github poller accepts (#61).
+const topicsFor = (category: string): string => {
+  const topics = Object.keys(TOPIC_CATEGORY).filter((t) => TOPIC_CATEGORY[t] === category);
+  return topics.length > 1 ? `${topics.slice(0, -1).join(", ")} or ${topics.at(-1)}` : (topics[0] ?? "");
+};
 
-// every topic github.ts accepts — the two hint sites listed 4 of 9
-const ALL_TOPICS = "static-site · web-app · mcp · skill · claude-plugin · tool · template · client";
+const SECTIONS: { category: string; title: string; topics: string }[] = [
+  { category: "static_site", title: "Static Sites" },
+  { category: "web_app", title: "Web Apps" },
+  { category: "plugin_skill", title: "Plugins · MCPs · Skills" },
+  { category: "tooling", title: "Tools · Templates · Experiments" },
+  { category: "client_project", title: "Client Projects" },
+].map((s) => ({ ...s, topics: topicsFor(s.category) }));
+
+const ALL_TOPICS = Object.keys(TOPIC_CATEGORY).join(" · ");
 
 export function MapPage(props: {
   rows: TriageRow[];

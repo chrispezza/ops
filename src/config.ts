@@ -21,6 +21,21 @@ export const EXPECTED_METRICS: Record<string, string[]> = {
   client_project: [], // mixed shapes; per-repo expectations don't generalize
 };
 
+// Spec §2.4: classification lives in the system of record — GitHub topics.
+// The github poller reads it and the map's empty-state hints name the topics
+// from it, so a topic added here is both accepted and taught.
+export const TOPIC_CATEGORY: Record<string, string> = {
+  "static-site": "static_site",
+  "web-app": "web_app",
+  mcp: "plugin_skill",
+  skill: "plugin_skill",
+  "claude-plugin": "plugin_skill",
+  "claude-code-plugin": "plugin_skill",
+  tool: "tooling",
+  template: "tooling",
+  client: "client_project",
+};
+
 // The one severity vocabulary. Three files had three lists ("ok" vs "info" for
 // level 0) — the dot's aria-label and the triage "why" labels must agree.
 export const SEVERITY_NAMES = ["ok", "low", "medium", "high", "critical"] as const;

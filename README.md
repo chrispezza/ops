@@ -168,9 +168,13 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 | `NTFY_TOKEN` | auth for a protected ntfy topic |
 
 Issue tiering lives in GitHub labels, the way repo categories live in topics:
-`security`, `P0` and `critical` surface at high severity, `bug` and `P1` at
-medium, `P2` at low. Label an issue and it shows on `/findings` within the
-hour; close it and it drops off. Ops never writes labels.
+`P0` (or `critical`) surfaces at high severity, `P1` at medium, `P2` at low, and
+`P3` is an explicit "no action needed" that tiers the issue without flagging it.
+`bug` and `security` are type labels and carry no severity on their own. Label
+an issue and it shows on `/findings` within the hour; close it and it drops
+off. Ops never writes labels, and severity labels are applied by the
+maintainer, not by agents: the judge's calibration (ADR-006) reads them as
+human ground truth.
 
 GitHub fine-grained PATs are scoped to a single resource owner. With multiple
 owners in `GITHUB_OWNERS`, set one secret per owner: `GITHUB_PAT_<OWNER>`

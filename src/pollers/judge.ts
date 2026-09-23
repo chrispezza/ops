@@ -18,9 +18,9 @@ import type { EntityUpsert, KnownEntity, Poller, PollerResult, SignalInsert } fr
 const JEV_URL = "https://api.typesafe.ai/v1/systemone";
 const JEV_MODEL = "jev-latest";
 
-// Index == the severity github.ts's LABEL_SEVERITY assigns the same label, so a
-// verdict lands in the maintainer's own vocabulary instead of a second scale
-// nothing can act on. Order is load-bearing: `within one tier` in the
+// Index == the severity github.ts's LABEL_SEVERITY assigns the same label
+// ("none" is the maintainer's p3), so a verdict lands in the maintainer's own
+// vocabulary instead of a second scale nothing can act on. Order is load-bearing: `within one tier` in the
 // calibration metrics compares these indices.
 const TIERS = ["none", "p2", "p1", "p0"] as const;
 type Tier = (typeof TIERS)[number];
@@ -268,7 +268,7 @@ async function fetchIssues(
 export function labelSeverity(issue: IssueNode): number | null {
   const graded = (issue.labels?.nodes ?? [])
     .map((l) => LABEL_SEVERITY[l.name.toLowerCase()])
-    .filter((s): s is 1 | 2 | 3 => s !== undefined);
+    .filter((s) => s !== undefined);
   return graded.length > 0 ? Math.max(...graded) : null;
 }
 
@@ -292,7 +292,7 @@ function labelsBy(issue: IssueNode, accept: (actor: Actor) => boolean): string[]
 }
 
 const maxSeverity = (labels: string[]): number | null => {
-  const graded = labels.map((l) => LABEL_SEVERITY[l]).filter((s): s is 1 | 2 | 3 => s !== undefined);
+  const graded = labels.map((l) => LABEL_SEVERITY[l]).filter((s) => s !== undefined);
   return graded.length > 0 ? Math.max(...graded) : null;
 };
 

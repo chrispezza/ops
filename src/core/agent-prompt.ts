@@ -97,10 +97,12 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
   // sits below the maintainer's own labels on purpose, and it deliberately gets
   // no done-criterion — "judge.issue_tier = 0" would read as an instruction to
   // label whatever the model flagged, which is the one thing this must not do.
+  // Nor may the agent apply the severity itself: under the maintainer's PAT its
+  // label reads as theirs, and the calibration gate could no longer fail (#61).
   const proposed = by("judge.issue_tier");
   if ((proposed?.value_num ?? 0) > 0) {
     findings.push(
-      `- ${proposed?.value_num} unlabeled issue(s) an advisory model would tier p1 or worse: ${proposed?.value_text ?? ""}${link(proposed)} — a suggestion with a confidence score, not a verdict: read each issue yourself, then label it in GitHub or leave it unlabeled`,
+      `- ${proposed?.value_num} untiered issue(s) an advisory model would tier p1 or worse: ${proposed?.value_text ?? ""}${link(proposed)} — a suggestion with a confidence score, not a verdict: read each issue yourself and tell the maintainer which P0–P3 label you would apply; severity labels are the maintainer's to apply, type labels (bug, security, enhancement) are yours`,
     );
   }
   const issues = by("issues.open");

@@ -261,12 +261,14 @@ describe("github poller", () => {
             nameWithOwner: "clownware/eat-local",
             url: "https://github.com/clownware/eat-local",
             issues: {
-              totalCount: 4,
+              totalCount: 6,
               nodes: [
-                issue(10, "prod hydration failure on the menu page", ["bug"]),
-                issue(51, "plaintext Kit API key committed in .env — rotate and purge history before launch", ["Security", "enhancement"]),
+                issue(10, "prod hydration failure on the menu page", ["bug", "P1"]),
+                issue(51, "plaintext Kit API key committed in .env — rotate and purge history before launch", ["security", "p0"]),
                 issue(52, "nice to have: dark mode", ["enhancement"]),
                 issue(53, "polish copy", ["P2"]),
+                issue(54, "rustdoc link 404s", ["bug"]),
+                issue(55, "question about caching", ["P3"]),
               ],
             },
           }),
@@ -278,12 +280,14 @@ describe("github poller", () => {
     const sig = (id: string, metric: string) => result.signals.find((s) => s.entityId === id && s.metric === metric);
 
     const flagged = sig("repo:clownware/eat-local", "issues.flagged");
-    expect(flagged?.valueNum).toBe(3); // enhancement alone carries no severity
-    expect(flagged?.severity).toBe(3); // Security, case-insensitively
+    // #61: bug/security/enhancement are type labels and carry no severity;
+    // P3 is the maintainer's explicit "none", tiered but never flagged.
+    expect(flagged?.valueNum).toBe(3);
+    expect(flagged?.severity).toBe(3); // p0, case-insensitively
     expect(flagged?.valueText).toBe(
-      "#51 plaintext Kit API key committed in .env — rotate and purg… (Security) · #10 prod hydration failure on the menu page (bug) · #53 polish copy (P2)",
+      "#51 plaintext Kit API key committed in .env — rotate and purg… (p0) · #10 prod hydration failure on the menu page (P1) · #53 polish copy (P2)",
     );
-    expect(flagged?.url).toContain("label%3ASecurity");
+    expect(flagged?.url).toContain("label%3Ap0");
 
     expect(sig("repo:clownware/unlabeled", "issues.flagged")).toMatchObject({ valueNum: 0, severity: 0 });
   });

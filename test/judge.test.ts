@@ -267,6 +267,33 @@ describe("judge poller", () => {
     expect(human?.valueText).toBe("1 of 2 exact · 2 within one tier · human-labelled sample");
   });
 
+  it("grades its none verdicts against the maintainer's P3 (#61)", async () => {
+    stubUpstreams({
+      issues: [issue(10, "how do I configure the cache?", ["P3"]), issue(11, "data loss on sync", ["p0"])],
+      tiers: { 10: { choice: "none", confidence: 0.9 }, 11: { choice: "p0", confidence: 0.9 } },
+    });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+    // P3 is severity 0, the same index as "none" — gradeable, and exact.
+    expect(signalFor(result, "judge.tier_agreement_human")?.valueText).toBe(
+      "2 of 2 exact · 2 within one tier · human-labelled sample",
+    );
+    expect(signalFor(result, "judge.issue_tier")?.valueNum).toBe(0); // tiered, so never proposed
+  });
+
+  it("treats bug and security as type labels, so the issue is still untiered (#61)", async () => {
+    stubUpstreams({
+      issues: [issue(12, "silent deploy stop", ["bug"]), issue(13, "token in logs", ["security"])],
+      tiers: { 12: { choice: "p1", confidence: 0.9 }, 13: { choice: "p0", confidence: 0.9 } },
+    });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+    const tier = signalFor(result, "judge.issue_tier");
+    expect(tier?.valueNum).toBe(2);
+    expect(tier?.valueText).toContain("#13 p0");
+    expect(signalFor(result, "judge.tier_agreement")?.valueNum).toBeUndefined(); // nothing to grade against
+  });
+
   it("keeps re-judging the calibration sample even when everything is in the span", async () => {
     const cursors = { "repo:chrispezza/ops": { low: 10, high: 11, open: [] } };
     stubUpstreams({

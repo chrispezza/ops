@@ -1,3 +1,4 @@
+import { TOPIC_CATEGORY } from "../config";
 import type { EntityUpsert, Poller, PollerResult, SignalInsert } from "./types";
 
 // Fine-grained PATs are scoped to one resource owner. GITHUB_PAT_<OWNER>
@@ -9,31 +10,23 @@ export function tokenForOwner(env: Env, owner: string): string | undefined {
   return (env as unknown as Record<string, string | undefined>)[key] ?? env.GITHUB_PAT;
 }
 
-// Spec §2.4: classification lives in the system of record — GitHub topics.
-const TOPIC_CATEGORY: Record<string, string> = {
-  "static-site": "static_site",
-  "web-app": "web_app",
-  mcp: "plugin_skill",
-  skill: "plugin_skill",
-  "claude-plugin": "plugin_skill",
-  "claude-code-plugin": "plugin_skill",
-  tool: "tooling",
-  template: "tooling",
-  client: "client_project",
-};
-
 // Spec §2.4 again: tiering lives in the system of record — GitHub labels.
 // Label a P0 once and it surfaces within the hour; close it and it drops off.
 // Matched case-insensitively; unknown labels carry no severity. Ops never
 // writes labels (ADR-001) — the weekly agent pass is where unlabeled issues
 // get read and labeled.
-export const LABEL_SEVERITY: Record<string, 1 | 2 | 3> = {
-  security: 3,
+//
+// Severity labels only (#61). `bug` and `security` are TYPE labels: they say
+// what an issue is, not how bad — a rustdoc-link fix and a silent deploy stop
+// are both bugs. `p3` is the maintainer's explicit "none": it tiers an issue
+// at 0, so it never surfaces as a finding, but the judge's own "none" verdicts
+// become gradeable against it (ADR-006). `critical` is a legacy alias of p0.
+export const LABEL_SEVERITY: Record<string, 0 | 1 | 2 | 3> = {
   p0: 3,
   critical: 3,
-  bug: 2,
   p1: 2,
   p2: 1,
+  p3: 0,
 };
 
 // Issue and PR nodes are capped per repo; a repo past the cap is reported in
@@ -378,13 +371,14 @@ export const github: Poller = {
           dedupeKey: hourBucket,
         });
         // Labeled tiering: severity is the worst label on any open issue, the
-        // text names the worst few so the finding reads without a click.
+        // text names the worst few so the finding reads without a click. A p3
+        // issue is tiered but not flagged — the maintainer said "none".
         const flagged = issueNodes
           .map((i) => {
             const labels = (i.labels?.nodes ?? []).map((l) => l.name);
             const graded = labels
               .map((l) => ({ label: l, severity: LABEL_SEVERITY[l.toLowerCase()] }))
-              .filter((g): g is { label: string; severity: 1 | 2 | 3 } => g.severity !== undefined)
+              .filter((g): g is { label: string; severity: 1 | 2 | 3 } => (g.severity ?? 0) > 0)
               .sort((a, b) => b.severity - a.severity);
             return graded[0] ? { number: i.number, title: i.title, ...graded[0] } : null;
           })
