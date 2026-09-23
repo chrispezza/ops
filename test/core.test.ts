@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EXPECTED_METRICS } from "../src/config";
-import { emitHygieneSignals } from "../src/core/derive";
+import { emitHygieneSignals, HYGIENE_RECONCILE_SQL } from "../src/core/derive";
 import { entitiesWithLatest, findings, intervalSums, latestByMetric, latestSignals } from "../src/core/queries";
 import { runPollers } from "../src/core/runner";
 import { insertSignals, upsertEntities } from "../src/core/store";
@@ -228,6 +228,28 @@ describe("hygiene pass", () => {
       (s) => s.metric === "hygiene.missing_metric" && s.dedupe_key === "manifest.description",
     );
     expect(flag?.severity).toBe(0); // resolved, not left stale forever
+  });
+
+  it("resolves per-metric hygiene flags that are no longer expected, and seeks the metric index", async () => {
+    await upsertEntities(env.DB, [{ id: "repo:skill", kind: "repo", category: "plugin_skill", name: "skill" }], NOW);
+    await insertSignals(env.DB, "core", [
+      {
+        entityId: "repo:skill",
+        metric: "hygiene.missing.retired.metric",
+        valueText: "retired.metric",
+        severity: 1,
+        observedAt: NOW,
+        dedupeKey: "retired.metric",
+      },
+    ]);
+
+    await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW + 60);
+    const flag = (await latestSignals(env.DB, "repo:skill")).find((s) => s.metric === "hygiene.missing.retired.metric");
+    expect(flag?.severity).toBe(0);
+
+    // #60: the reconciliation scan must stay an index seek, not a full scan of signals
+    const plan = await env.DB.prepare(`EXPLAIN QUERY PLAN ${HYGIENE_RECONCILE_SQL}`).all<{ detail: string }>();
+    expect(plan.results.map((r) => r.detail).join("\n")).toContain("idx_signals_metric");
   });
 });
 
