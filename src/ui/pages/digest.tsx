@@ -169,8 +169,8 @@ function ChangeRow(props: { row: SignalRow & { entity_name: string }; change: st
 // warning hue, resolved down in ink. Server-rendered SVG (ux §2.3); the
 // numbers ride in each column's title and the label, so the picture is never
 // the only copy. Onset is the first observation past the baseline; the
-// resolved day is the last observation at severity 2+ (hourly polls put the
-// true moment within an hour of it).
+// resolved day is the last observation at severity 2+ (the true moment is
+// within one poll of it: an hour for hourly pollers, a day for daily ones).
 function Timeline(props: { days: DigestDay[] }) {
   const { days } = props;
   if (days.length === 0) return null;

@@ -117,7 +117,7 @@ Issue and PR cards come from the `issues.cards` / `prs.cards` rows the GitHub po
 - HTMX targets: filter controls swap the table region only; nav is full page. `hx-push-url` on every filter change so back-button and refresh behave.
 - Sort: column-header links that set `sort=` param. Server sorts; no client table JS.
 - Auto-refresh: `hx-trigger="every 300s"` on the freshness chip only — it's cheap, and it tells you *whether* to reload, rather than reloading heavy views on a timer.
-- Keyboard: `/` focuses the filter box on map/triage/findings. That's the whole shortcut system for v1.
+- Keyboard: `/` focuses the filter box on map (both faces), board and findings. That's the whole shortcut system for v1.
 
 ## 6. Open questions (decide in first implementation PR, not before)
 

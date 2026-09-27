@@ -138,7 +138,7 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 ## Git and PR flow
 
 - Conventional commits, `type(scope): description`. Scope is the poller,
-  page or subsystem touched: `ui`, `ux`, `github`, `findings`, `triage`,
+  page or subsystem touched: `ui`, `ux`, `github`, `board`, `findings`, `triage`,
   `spend`, `uptime`, `score`, `health`, `security`, `access`, `ingest`,
   `prompt`, `digest`, `core`, `maintenance`, `manifests`, `vendors`, `entity`.
 - Branch from `main` as `type/short-slug`; open a PR; never push to `main`.
