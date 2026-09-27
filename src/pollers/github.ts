@@ -89,6 +89,11 @@ const QUERY = /* GraphQL */ `
               ... on Commit {
                 oid
                 statusCheckRollup { state }
+                # CI that runs on PRs only leaves a squash/merge commit on the
+                # default branch with no checks of its own; its PR head has them.
+                associatedPullRequests(first: 1) {
+                  nodes { merged commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+                }
               }
             }
           }
@@ -166,7 +171,16 @@ interface RepoNode {
   } | null;
   defaultBranchRef: {
     name: string;
-    target: { oid: string; statusCheckRollup: { state: string } | null } | null;
+    target: {
+      oid: string;
+      statusCheckRollup: { state: string } | null;
+      associatedPullRequests?: {
+        nodes?: {
+          merged: boolean;
+          commits: { nodes?: { commit: { statusCheckRollup: { state: string } | null } }[] };
+        }[];
+      } | null;
+    } | null;
   } | null;
   latestRelease: { tagName: string; createdAt: string; url: string } | null;
 }
@@ -212,6 +226,23 @@ async function* fetchRepos(pat: string, owner: string): AsyncGenerator<RepoNode>
     yield* conn.nodes;
     cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
   } while (cursor);
+}
+
+// Worst-of ordering for combining two rollups.
+const ROLLUP_RANK: Record<string, number> = { SUCCESS: 0, EXPECTED: 1, PENDING: 1, ERROR: 2, FAILURE: 2 };
+
+/**
+ * CI state for the default branch HEAD. Most repos run their checks on PRs
+ * only, so a merge commit carries none; fall back to the merged PR's head
+ * commit. When both exist (say a deploy workflow on push plus PR CI), report
+ * the worse, so a failed deploy on main still shows.
+ */
+export function ciState(target: NonNullable<RepoNode["defaultBranchRef"]>["target"]): string | null {
+  const own = target?.statusCheckRollup?.state ?? null;
+  const pr = target?.associatedPullRequests?.nodes?.find((n) => n.merged);
+  const fromPr = pr?.commits.nodes?.at(-1)?.commit.statusCheckRollup?.state ?? null;
+  if (!own || !fromPr) return own ?? fromPr;
+  return (ROLLUP_RANK[fromPr] ?? 0) > (ROLLUP_RANK[own] ?? 0) ? fromPr : own;
 }
 
 interface WorkflowRun {
@@ -344,8 +375,8 @@ export const github: Poller = {
         });
 
         const head = repo.defaultBranchRef?.target;
-        if (head?.statusCheckRollup) {
-          const state = head.statusCheckRollup.state;
+        const state = head ? ciState(head) : null;
+        if (head && state) {
           signals.push({
             entityId: id,
             metric: "ci.status",
@@ -653,7 +684,9 @@ export const github: Poller = {
           });
         }
 
-        // Actions: read — CI health beyond current pass/fail
+        // Actions: read — CI health beyond current pass/fail. Gated on HEAD's
+        // own checks, not ciState(): run history is read by branch, and a repo
+        // whose CI runs only on PRs has no current default-branch runs to read.
         if (repo.defaultBranchRef?.name && head?.statusCheckRollup) {
           const runs = await fetchRuns(pat, repo.nameWithOwner, repo.defaultBranchRef.name);
           const latest = runs[0];
