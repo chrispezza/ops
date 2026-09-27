@@ -42,7 +42,7 @@
 		// How much issue text the judge poller may send to TypeSafe: "all" (title
 		// and body for every tracked repo), "titles" (private repos contribute
 		// titles only), or "public" (private repos are not judged at all).
-		"JUDGE_SCOPE": "all",
+		"JUDGE_SCOPE": "titles",
 		// Comma-separated GitHub logins whose labels do NOT count as ground truth
 		// for judge.tier_agreement. GitHub Apps are excluded automatically; this is
 		// for automations that label under a person's own PAT, which the API
