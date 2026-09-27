@@ -383,6 +383,52 @@ describe("github poller", () => {
     expect(sig("ci.fail_streak")?.severity).toBe(2); // chronic: 3+ consecutive failures
   });
 
+  it("reads ci.status from the merged PR's head when CI runs on PRs only", async () => {
+    const merged = (state: string) => ({
+      nodes: [{ merged: true, commits: { nodes: [{ commit: { statusCheckRollup: { state } } }] } }],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            name: "pr-only",
+            nameWithOwner: "clownware/pr-only",
+            defaultBranchRef: {
+              name: "main",
+              target: { oid: "m1", statusCheckRollup: null, associatedPullRequests: merged("SUCCESS") },
+            },
+          }),
+          repoNode({
+            name: "deploys",
+            nameWithOwner: "clownware/deploys",
+            // push-triggered deploy passed on main, but the PR's CI failed
+            defaultBranchRef: {
+              name: "main",
+              target: { oid: "m2", statusCheckRollup: { state: "SUCCESS" }, associatedPullRequests: merged("FAILURE") },
+            },
+          }),
+          repoNode({
+            name: "direct",
+            nameWithOwner: "clownware/direct",
+            defaultBranchRef: {
+              name: "main",
+              target: { oid: "m3", statusCheckRollup: null, associatedPullRequests: { nodes: [] } },
+            },
+          }),
+        ]),
+      ),
+    );
+
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const ci = (id: string) => result.signals.find((s) => s.entityId === id && s.metric === "ci.status");
+    expect(ci("repo:clownware/pr-only")?.valueText).toBe("success");
+    expect(ci("repo:clownware/pr-only")?.dedupeKey).toBe("m1");
+    expect(ci("repo:clownware/deploys")?.valueText).toBe("failure");
+    expect(ci("repo:clownware/deploys")?.severity).toBe(3);
+    expect(ci("repo:clownware/direct")).toBeUndefined();
+  });
+
   it("degrades to core metrics when the token lacks Actions/Contents grants", async () => {
     vi.stubGlobal(
       "fetch",
