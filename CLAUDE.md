@@ -104,10 +104,10 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
   Do not add a third machine route without a reason of the same shape.
 - Access assertion verification (`src/core/access.ts`) pins RS256 and checks
   `aud`, `iss` and expiry. Do not loosen the algorithm allow-list.
-- Validate all `/ingest` and form input at the boundary; unknown fields are
-  ignored, not stored. Keep the CSP and `Referrer-Policy: same-origin` headers
-  as they are (a stricter referrer policy nulled `Origin` on form POSTs; see
-  git history for #36).
+- Validate all `/ingest` and form input at the boundary; nothing unrecognised
+  is stored (`/ingest` rejects an unknown field with `400`). Keep the CSP and
+  `Referrer-Policy: same-origin` headers as they are (a stricter referrer
+  policy nulled `Origin` on form POSTs; see git history for #36).
 - Upstream credentials are read-only by design. Never request write scopes.
 
 ## Testing conventions
