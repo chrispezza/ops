@@ -268,8 +268,12 @@ curl -X POST "$OPS_URL/ingest" \
 `dedupeKey` are required. `valueNum`, `valueText`, `url` and `severity` (`0`–`4`,
 default `0`) are optional. For a metric covering a time window rather than an
 instant, add `period: { "start": <epoch>, "end": <epoch> }` — that is what makes
-spend roll up correctly. Unknown fields are ignored, and `metric` must match
+spend roll up correctly. An unknown field is rejected with `400` naming it
+(a misspelled field used to store as a silent no-op), and `metric` must match
 `^[a-z0-9_]+\.[a-z0-9_.]+$`.
+
+**Scales.** `lhci.performance` is the 0–100 score the map chip shows, so
+multiply lhci's 0–1 `summary.performance` by 100 before sending.
 
 Signals referencing an entity Ops has never seen are rejected, so include the
 entity in the same request (upserts are idempotent).
