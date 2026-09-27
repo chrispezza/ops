@@ -51,9 +51,9 @@ export interface DigestRaised extends DigestChangeRow {
 }
 
 // One bucket per UTC day of the window: findings that first crossed their
-// baseline that day, findings last seen at severity 2+ that day (the hour
-// they resolved is within a poll of that — the hourly cadence makes "last
-// seen high" an honest stand-in for "resolved").
+// baseline that day, findings last seen at severity 2+ that day. The true
+// resolution is within one poll of that — an hour for hourly pollers, a day
+// for daily ones — so a daily-polled finding can land a day early.
 export interface DigestDay {
   day: number; // epoch of 00:00 UTC
   raised: number;
