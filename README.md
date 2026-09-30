@@ -312,16 +312,19 @@ the runner handles storage, dedup, failure isolation and health reporting.
 Read its credential from `env`; when it is missing, throw an error whose
 message starts with `unconfigured:` (e.g. `unconfigured: set the FOO_KEY
 secret to enable this poller`). The runner recognises that prefix and records
-the poller as unconfigured on `/health` instead of as a failure.
+the poller as unconfigured on `/health` instead of as a failure. Declare every
+metric in `metricSemantics` and add it to [docs/metrics.md](docs/metrics.md);
+a test fails when the catalogue falls behind the code.
 
 ## Design notes
 
 The architecture decisions, with their alternatives and trade-offs, are in
 [`docs/adr/`](docs/adr/). Longer-form design docs:
 
+- [docs/metrics.md](docs/metrics.md) — every metric, its semantics, source and severity rule
 - [ops-spec.md](ops-spec.md) — architecture, data model, poller interface
 - [ops-ux.md](ops-ux.md) — pages, URLs, states
-- [ops-plan.md](ops-plan.md) — implementation phases
+- [ops-plan.md](ops-plan.md) — implementation phases (historical)
 
 Stack: [Hono](https://hono.dev) with JSX server rendering,
 [htmx](https://htmx.org) for partial updates, D1 for storage. No client-side
