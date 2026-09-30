@@ -92,7 +92,7 @@ Flat table: severity dot, entity, metric, value, observed_at, deep link. Default
 
 One row per poller: last run, last success, duration, entities/signals written, current status signal. Failures show the error text; an **unconfigured** poller (credential absent) is listed calmly at low severity and does not trip the banner; coverage `notes` ("monitoring 25 of 31 sites") sit at the same calm level. This page is why principle 2 is cheap to honor.
 
-A **run now** button (`POST /health/run`) runs every poller and the derive pass immediately. It is live in production, not dev-only as v0.1 planned: the same-origin gate (spec §5) is what stops anonymous `curl` from fanning out to every upstream API.
+A **run all pollers now** button (`POST /health/run`) runs every poller and the derive pass immediately. It is live in production, not dev-only as v0.1 planned: the same-origin gate (spec §5) is what stops anonymous `curl` from fanning out to every upstream API.
 
 ### 2.7 `/settings`
 
@@ -126,7 +126,7 @@ Every entity page carries an **Agent prompt** disclosure (a findings-and-expecte
 
 | Condition | Treatment |
 |---|---|
-| First run, empty DB | `/` shows setup checklist: set secrets → tag repos → wait for cron / press **run now** on `/health` (§2.6) |
+| First run, empty DB | `/` shows setup checklist: set secrets → tag repos → wait for cron / press **run all pollers now** on `/health` (§2.6) |
 | Poller failing | Amber banner on every page listing the source + age of last good data: "GitHub data is 9h old (poller failing since 03:12) → /health". Numbers from that source render dimmed, never hidden. |
 | No entities in a category | Section renders with hint text, not omitted — the IA stays stable. |
 | Signal with no URL | Chip renders unlinked; no dead links. |
