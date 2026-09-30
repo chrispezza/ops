@@ -89,7 +89,9 @@ from stored signals on each pass in `src/core/derive.ts` and
 - Metric names are `domain.name` matching `^[a-z0-9_]+\.[a-z0-9_.]+$`. A new
   domain shows up on `/findings` with zero view changes; that is the extension
   point, so prefer a new metric over a new page.
-- Every metric a poller emits must be listed in `metricSemantics`.
+- Every metric a poller emits must be listed in `metricSemantics` and
+  documented in [docs/metrics.md](docs/metrics.md) with its severity rule;
+  `test/metrics-doc.test.ts` fails when the catalogue falls behind.
 
 Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 
@@ -161,5 +163,6 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 | `src/ui/` | layout, components, one file per page |
 | `migrations/` | D1 schema, numbered and append-only |
 | `public/` | static assets served by Workers Assets; `tokens.css` is the design system |
-| `docs/adr/` | architecture decisions |
+| `docs/adr/` | architecture decisions; `README.md` there is the index, `000-template.md` the template |
+| `docs/metrics.md` | metric catalogue: semantics, source, severity rule for every metric |
 | `ops-spec.md`, `ops-ux.md`, `ops-plan.md` | original design docs; the spec sections cited in code comments |
