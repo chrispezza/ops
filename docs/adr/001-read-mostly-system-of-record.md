@@ -4,14 +4,14 @@ description: >-
   GitHub and other upstream systems remain the system of record. Ops only
   aggregates and deep-links; its sole write-shaped affordance is a pre-filled
   new-issue link.
-lastUpdated: 2026-08-04T00:00:00.000Z
+lastUpdated: 2026-09-30T00:00:00.000Z
 tableOfContents: true
 pagefind: true
 ---
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-09-30: the list of Ops-owned writes grew by two; see the amendment below.
 
 ## Context
 
@@ -52,6 +52,15 @@ We will go with **Option 1**. Every finding deep-links to the system of record; 
 
 - **Scope audit**: all configured tokens remain read-only.
 - **Usage**: triage rows resolve via their deep links without requests for in-app actions.
+
+## Amendment: the complete list of Ops-owned writes (2026-09-30)
+
+The Decision named budgets and triage weights as the only writes to Ops-owned data. Two more have shipped since, both of the same shape — a human editing Ops's own presentation state, never an upstream:
+
+- **Vendor balances** (`POST /settings/balances`, 2026-08-17, #29): a prepaid balance to draw spend against, so the spend page has a denominator. Stored in `settings`, never sent anywhere.
+- **The archive toggle** (`POST /archive` on the entity page): hides an entity from the map, the priority list, notifications and the digest. It is the one Ops-owned *entity* mutation. A poller may set `archived` when the upstream repo is archived, but never clears it — unarchiving is a human act, so a poll cannot clobber a manual "Archive in Ops".
+
+The rule that survives: Ops-owned writes edit how Ops *presents* what it read; none of them reaches a system of record. The pre-filled new-issue link and the agent hand-off prompt (ux §2.10) remain the only affordances pointed at one, and both are text the human carries across.
 
 ## References
 

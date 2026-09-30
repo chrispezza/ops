@@ -194,7 +194,7 @@ function distinctOwners(rows: TriageRow[]): string[] {
 }
 
 // Sources currently hard-failing — views dim their numbers instead of showing
-// them at full confidence (spec §3: "dimmed, never hidden"). Poller id = signal
+// them at full confidence (ux §3: "dimmed, never hidden"). Poller id = signal
 // source by construction (runner passes poller.id to insertSignals).
 function staleSources(health: PollerHealth[]): ReadonlySet<string> {
   return new Set(health.filter((h) => (h.lastRun?.severity ?? 0) >= 3).map((h) => h.name));

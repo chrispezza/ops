@@ -4,14 +4,14 @@ description: >-
   Observations are append-only rows; current state is always derived by query.
   Pollers declare each metric as state (latest wins) or interval (sum over
   period windows).
-lastUpdated: 2026-08-04T00:00:00.000Z
+lastUpdated: 2026-09-30T00:00:00.000Z
 tableOfContents: true
 pagefind: true
 ---
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-09-30: the "eventual pruning policy" exists; see the amendment below.
 
 ## Context
 
@@ -46,13 +46,21 @@ We will go with **Option 1**. Signals are append-only; the latest signal per (en
 - Any new metric source is just rows; `/findings` and entity pages pick it up unchanged.
 
 ### Negative
-- Every "current state" read pays a window-function query.
-- Signals table needs eventual pruning policy (not in v1).
+- Every "current state" read pays a window-function query. *Superseded by [ADR-005](005-signal-latest-pointer.md): reads now resolve through the `signal_latest` pointer table.*
+- Signals table needs eventual pruning policy (not in v1). *Delivered; see the amendment below.*
 
 ## Validation
 
 - **Contract tests**: idempotency, interval overwrite, and latest-derivation are covered in `test/core.test.ts`.
 
+## Amendment: retention compaction (2026-09-30, documenting `src/core/retention.ts` as shipped 2026-08-12)
+
+Hourly-bucketed state metrics add about 2k rows a day (issue #4). Once a state row is older than **30 days**, the daily sweep keeps the newest row per (entity, metric, UTC day) and deletes the rest. Interval metrics (spend, usage) are untouched — they are already daily — and fixed-dedupe rows (hygiene, budget, balance) only ever have one row, so the sweep is a no-op for them by construction.
+
+This is the one sanctioned deleter, and it does not renegotiate the decision: the newest row per (entity, metric) is by definition the newest of its day, so the current state is never touched and the `signal_latest` pointer (ADR-005) survives compaction by construction. History thins beyond 30 days; it does not end. The sweep runs first on the daily cron so it never queues behind a slow poller, and every row it deletes costs one row-write against the D1 allowance ([ADR-007](007-d1-row-write-budget.md), which weighed stopping it and kept it).
+
+`test/maintenance.test.ts` covers the sweep, including that the pointer lands on the surviving row.
+
 ## References
 
-- ops-spec.md §2.2–2.3; [ADR-003](003-static-poller-array.md)
+- ops-spec.md §2.2–2.3; [ADR-003](003-static-poller-array.md); [ADR-005](005-signal-latest-pointer.md); [ADR-007](007-d1-row-write-budget.md)

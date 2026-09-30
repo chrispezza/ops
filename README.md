@@ -27,7 +27,7 @@ pushed to it in 109 days."
 Ops pulls those signals into one table, scores them, and sorts by what is
 actually worth your next hour.
 
-## The four views
+## The views
 
 **Priority** (`/?view=priority`, the map's other face) ranks everything by a
 transparent score drawn as a bar, and every score explains itself in the `why`
@@ -98,13 +98,13 @@ as separate truth.
 
 | Poller | Schedule | Needs | Reports |
 |---|---|---|---|
-| `github` | hourly | `GITHUB_OWNERS`, `GITHUB_PAT` | CI status, Dependabot vulns, open PRs (human vs Dependabot, major bumps), issue backlog shape (new, idle, oldest, labeled), last push, releases, branches |
-| `uptime` | hourly | — (uses each repo's GitHub Website field) | `site.up`, `site.response_ms` |
+| `github` | hourly | `GITHUB_OWNERS`, `GITHUB_PAT` | CI status, duration and fail streak; Dependabot vulns; open PRs (human vs Dependabot, major bumps); issue backlog shape (new, idle, oldest, labeled); issue and PR cards plus 7-day velocity for the board; last push, releases, branches; a documentation health score (`docs.score`) |
+| `uptime` | hourly | — (uses each repo's GitHub Website field) | `site.up`, `site.response_ms` — capped at 25 sites per run, and says so on `/health` when it truncates |
 | `anthropic_usage` | daily | `ANTHROPIC_ADMIN_KEY` | token spend and usage |
 | `claude_code` | daily | `ANTHROPIC_ADMIN_KEY` | sessions, lines added, commits |
 | `openai_costs` | daily | `OPENAI_ADMIN_KEY` | organization costs |
 | `x_usage` | daily | `X_BEARER_TOKEN` | monthly post cap usage |
-| `cloudflare` | daily | `CLOUDFLARE_API_TOKEN`, `CF_ACCOUNT_ID` | Worker requests/errors, D1 size |
+| `cloudflare` | daily | `CLOUDFLARE_API_TOKEN`, `CF_ACCOUNT_ID` | Worker requests, errors and error rate; D1 size, rows read and written, and how much of the daily row allowance each has used (`d1.read_cap_pct`, `d1.write_cap_pct` — [ADR-007](docs/adr/007-d1-row-write-budget.md)) |
 | `manifests` | daily | `MARKETPLACE_REPO`, `GITHUB_PAT` | Claude Code plugin/skill inventory |
 | `judge` | daily | `TYPESAFE_API_KEY`, `GITHUB_PAT` | advisory issue tiering — `judge.issue_tier`, `judge.tier_agreement`, `judge.tier_agreement_human`, `judge.reference_agreement` |
 
@@ -166,7 +166,7 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 
 | Secret | Enables |
 |---|---|
-| `GITHUB_PAT` | the `github` and `manifests` pollers |
+| `GITHUB_PAT` | the `github`, `manifests` and `judge` pollers |
 | `GITHUB_PAT_<OWNER>` | per-owner override — see below |
 | `ANTHROPIC_ADMIN_KEY` | `anthropic_usage`, `claude_code` |
 | `OPENAI_ADMIN_KEY` | `openai_costs` |
@@ -292,11 +292,17 @@ later is safe. `500` is an unrecognised failure on the Ops side.
 npm run dev        # local dev server against local D1
 npm test           # vitest against real workerd
 npm run typecheck
+npm run types      # regenerate worker-configuration.d.ts after editing wrangler.jsonc
 ```
 
 To seed a local instance, apply migrations with
 `wrangler d1 migrations apply ops --local`, put `INGEST_TOKEN=dev-token` in
 `.dev.vars`, and POST the payload above at `http://localhost:8787/ingest`.
+
+[CLAUDE.md](CLAUDE.md) is the operating manual for anyone (or any agent)
+changing the code: the architecture invariants, the poller contract, the
+security rules, testing conventions and the PR flow. Read it before opening a
+pull request.
 
 ### Adding a poller
 

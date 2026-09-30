@@ -65,7 +65,7 @@ export function Chip(props: {
   const { label, signal, now } = props;
   if (!signal) {
     return (
-      // teach, don't dead-end (spec §0.5): missing expected metrics arrive from
+      // teach, don't dead-end (ux §0.5): missing expected metrics arrive from
       // a poller or from CI via POST /ingest
       <span class="chip missing" title={`${label}: no data — arrives from a poller or via POST /ingest (see README)`}>
         {label} —

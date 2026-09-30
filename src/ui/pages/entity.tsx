@@ -179,7 +179,7 @@ export function EntityPage(props: {
 
       {domains.size === 0 && props.intervalSeries.length === 0 && (
         <section class="section">
-          {/* spec §0.5: empty states teach — a fresh entity page was a header
+          {/* ux §0.5: empty states teach — a fresh entity page was a header
               floating over an empty audit trail with no explanation */}
           <p class="hint">
             No signals yet — the next poll fills this in, or push metrics via <code>POST /ingest</code> (see the
@@ -191,7 +191,7 @@ export function EntityPage(props: {
       {props.intervalSeries.map((series) => (
         <section class="section">
           {/* labelForMetric like every other view — this heading rendered raw
-              codes like "usage.tokens_in"; sparkline per spec §2.5 */}
+              codes like "usage.tokens_in"; sparkline per ux §2.5 */}
           <h2>{labelForMetric(series.metric)}</h2>
           <Sparkline points={series.points} days={windowDays} now={now} label={labelForMetric(series.metric)} />
           <table role="table" class="rows">

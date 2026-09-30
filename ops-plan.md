@@ -1,5 +1,7 @@
 # Ops — Implementation Plan v0.1
 
+> **Status (2026-09-30):** historical. Phases 0–5 shipped on 2026-08-04 and the repo went public on 2026-08-13 (#13); phase 6 is tracked in [#3](https://github.com/chrispezza/ops/issues/3) and deferred until a second deployment exists. The layout and stack notes below are *as planned*; the code has since added `board`, `digest`, `heatmap`, `retention`, `notify`, `access`, `agent-prompt` and `d1-errors` modules, seven more pollers, and a third cron. [CLAUDE.md](CLAUDE.md) describes what is built; [ops-spec.md](ops-spec.md) and [ops-ux.md](ops-ux.md) were revised to v0.2 the same day. Only facts a reader would trip on were corrected here.
+
 Companion to `ops-spec.md` (architecture/data) and `ops-ux.md` (pages/states). This doc turns spec §6's build order into concrete phases: stack decisions, repo layout, and per-phase deliverables with acceptance criteria. Each phase is one PR-sized unit that leaves the app deployable.
 
 ## 0. Stack decisions (made once, up front)
@@ -9,7 +11,7 @@ Companion to `ops-spec.md` (architecture/data) and `ops-ux.md` (pages/states). T
 | Router/SSR | **Hono** (JSX, no client runtime) | Typed routing, middleware, server-side JSX for the HTMX partials. ~20KB into the Worker bundle, actively maintained, first-class Workers support. Alternative (raw `fetch` + template literals) saves the dep but costs us typed props and route ergonomics we'll use on every page. |
 | HTMX | **Self-hosted static asset** (~14KB gz) via Workers assets | No CDN: removes a third-party runtime dependency and a supply-chain surface. Pin the version in-repo. |
 | Migrations | `wrangler d1 migrations` | Built-in, sequential SQL files, no extra tooling. |
-| Tests | **Vitest + `@cloudflare/vitest-pool-workers`** | Runs against real workerd + real D1 (SQLite), so idempotency and the triage/spend SQL are tested against the actual engine, not a mock. Poller HTTP mocked with `fetchMock`. |
+| Tests | **Vitest + `@cloudflare/vitest-pool-workers`** | Runs against real workerd + real D1 (SQLite), so idempotency and the triage/spend SQL are tested against the actual engine, not a mock. Poller HTTP mocked with `vi.stubGlobal("fetch", …)`, restored in `afterEach` (CLAUDE.md, *Testing conventions*). |
 | Types/lint | TS strict, no enums (const objects `as const`), interfaces for object shapes | Per personal coding standards. |
 | CI | GitHub Actions: typecheck → vitest → `wrangler deploy --dry-run` | Deploy stays manual (`wrangler deploy`) until phase 5 proves `/ingest`; then optionally deploy-on-main. |
 
@@ -19,7 +21,7 @@ Config typing: one `src/config.ts` exporting `Env` (bindings + secrets + vars), 
 
 ```
 ops/
-├── wrangler.jsonc            # D1 binding, 2 crons (hourly, daily 06:00 ET), assets dir, vars
+├── wrangler.jsonc            # D1 binding, 3 crons (hourly; daily 10:00 UTC; Friday digest 12:00 UTC), assets dir, vars
 ├── package.json  tsconfig.json  vitest.config.ts
 ├── migrations/
 │   └── 0001_init.sql         # entities, signals, budgets + indexes (spec §2.1 verbatim)
@@ -27,7 +29,7 @@ ops/
 │   ├── tokens.css            # type scale, 4px spacing, severity palette, light/dark
 │   └── htmx.min.js
 ├── src/
-│   ├── index.ts              # fetch (Hono app) + scheduled (runner fan-out) entries
+│   ├── index.tsx             # fetch (Hono app) + scheduled (runner fan-out) entries
 │   ├── config.ts             # Env, weights, expected-metrics map
 │   ├── core/
 │   │   ├── store.ts          # entity upsert (bump last_seen_at), idempotent signal insert
