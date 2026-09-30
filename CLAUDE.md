@@ -137,10 +137,12 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 
 ## Git and PR flow
 
-- Conventional commits, `type(scope): description`. Scope is the poller,
-  page or subsystem touched: `ui`, `ux`, `github`, `board`, `findings`, `triage`,
-  `spend`, `uptime`, `score`, `health`, `security`, `access`, `ingest`,
-  `prompt`, `digest`, `core`, `maintenance`, `manifests`, `vendors`, `entity`.
+- Conventional commits, `type(scope): description`. Scope is the poller id
+  (`github`, `uptime`, `judge`, `cloudflare`, `manifests`, `vendors` for the
+  spend pollers together), the page (`board`, `findings`, `triage`, `spend`,
+  `health`, `digest`, `entity`, `settings`) or the subsystem touched (`core`,
+  `ui`, `ux`, `a11y`, `score`, `security`, `access`, `ingest`, `prompt`,
+  `notify`, `maintenance`, `d1`, `deps`, `docs`).
 - Branch from `main` as `type/short-slug`; open a PR; never push to `main`.
   CI must be green before merge. Do not bypass hooks with `--no-verify`.
 - Deploys are manual (`wrangler deploy` from `main`), never from a branch.
@@ -154,7 +156,7 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 |---|---|
 | `src/index.tsx` | Hono app, routes, cron handler, security middleware |
 | `src/ingest.ts` | `POST /ingest` validation and auth |
-| `src/core/` | store, runner, derive, score, retention, notify, access, agent-prompt |
+| `src/core/` | store, runner, queries, derive, score, retention, notify, access, agent-prompt, board, digest, heatmap, d1-errors |
 | `src/pollers/` | one file per upstream; `index.ts` is the `POLLERS` array |
 | `src/ui/` | layout, components, one file per page |
 | `migrations/` | D1 schema, numbered and append-only |

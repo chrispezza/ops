@@ -4,7 +4,7 @@ description: >-
   Model-produced signals live in the judge.* domain, are pinned at severity 0,
   and are visible on /findings only. They never feed the triage score, push
   alerts or the digest, and deleting them must change nothing else.
-lastUpdated: 2026-09-18T00:00:00.000Z
+lastUpdated: 2026-09-23T00:00:00.000Z
 tableOfContents: true
 pagefind: true
 ---

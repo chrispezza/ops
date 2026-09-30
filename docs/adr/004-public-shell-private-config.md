@@ -4,14 +4,14 @@ description: >-
   The public repo contains the shell and reference pollers only. Deployment
   specifics live in wrangler vars/secrets; work-specific pollers live in a
   private repo that imports the public package.
-lastUpdated: 2026-08-04T00:00:00.000Z
+lastUpdated: 2026-09-30T00:00:00.000Z
 tableOfContents: true
 pagefind: true
 ---
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-08-13 (`manifests` reclassified) and 2026-09-30 (the classification rule restated for the nine pollers that now ship).
 
 ## Context
 
@@ -37,9 +37,11 @@ Ops serves two deployments: a personal portfolio (public-friendly) and a work po
 
 ## Decision
 
-We will go with **Option 1**. Public repo: core, UI, `github`/`anthropic_usage` pollers, `/ingest`. Work-only pollers (`skill_usage`, SEO ingest) live in a private repo that imports the public package and composes its own `POLLERS` array. Deployment specifics are `wrangler.toml`/`wrangler.jsonc` vars and Worker secrets — never code, never D1.
+We will go with **Option 1**. Public repo: core, UI, `/ingest`, and every poller whose target is deployment config rather than a resource named in code (as first written: `github` and `anthropic_usage`). Work-only pollers (`skill_usage`, SEO ingest) live in a private repo that imports the public package and composes its own `POLLERS` array. Deployment specifics are `wrangler.jsonc` vars and Worker secrets — never code, never D1.
 
 **Amendment (2026-08-13):** `manifests` was originally classified work-only. It now polls a *public* Claude Code plugin marketplace, so it ships in the public repo — but only under the rule above: its target is the `MARKETPLACE_REPO` var, not a constant in the source, and it is dormant when that var is unset. The classification test is therefore not "which poller" but "does it name a private resource in code" — a poller whose target is deployment config satisfies the review gate below regardless of what it points at.
+
+**Amendment (2026-09-30):** nine pollers now ship in the public repo (`github`, `uptime`, `anthropic_usage`, `claude_code`, `openai_costs`, `x_usage`, `manifests`, `cloudflare`, `judge`), each admitted by the 2026-08-13 test: every target is a var or a secret, every poller is dormant when its credential is absent (the `unconfigured:` convention in `src/pollers/types.ts`), and `wrangler.jsonc`'s `vars` block is the only place a deployment-specific identifier appears — which is why forking means replacing that block and nothing else. The Decision's poller list is restated as the rule rather than an enumeration so it stops going stale.
 
 ## Consequences
 
