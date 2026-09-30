@@ -41,7 +41,9 @@ Diagnosing D1 usage: start from `d1AnalyticsAdaptiveGroups` by `date` or
 trust `wrangler d1 insights` for totals: its per-query dataset is sampled and
 once summed to ~270k rows against a real 5.1M, missing the retention DELETE
 entirely (#53). For one query's exact cost, `wrangler d1 execute --remote
---json` reports `meta.rows_read`.
+--json` reports `meta.rows_read`. [docs/runbook.md](docs/runbook.md) has the
+procedures for the incidents that have happened (read and write allowance,
+subrequest ceiling), applying a migration, deploying and rotating secrets.
 
 ## Architecture invariants (do not violate without a new ADR)
 
@@ -165,4 +167,6 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 | `public/` | static assets served by Workers Assets; `tokens.css` is the design system |
 | `docs/adr/` | architecture decisions; `README.md` there is the index, `000-template.md` the template |
 | `docs/metrics.md` | metric catalogue: semantics, source, severity rule for every metric |
+| `docs/runbook.md` | incident procedures (D1 allowances, subrequest ceiling), migrations, deploys, secret rotation |
+| `SECURITY.md` | security model in brief; vulnerability reporting |
 | `ops-spec.md`, `ops-ux.md`, `ops-plan.md` | original design docs; the spec sections cited in code comments |

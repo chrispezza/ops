@@ -322,6 +322,8 @@ The architecture decisions, with their alternatives and trade-offs, are in
 [`docs/adr/`](docs/adr/). Longer-form design docs:
 
 - [docs/metrics.md](docs/metrics.md) — every metric, its semantics, source and severity rule
+- [docs/runbook.md](docs/runbook.md) — incidents that have happened and how to handle them; migrations, deploys, secret rotation
+- [SECURITY.md](SECURITY.md) — the security model in brief and how to report a vulnerability
 - [ops-spec.md](ops-spec.md) — architecture, data model, poller interface
 - [ops-ux.md](ops-ux.md) — pages, URLs, states
 - [ops-plan.md](ops-plan.md) — implementation phases (historical)

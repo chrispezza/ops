@@ -1,0 +1,35 @@
+# Local secrets for `wrangler dev`. Copy to .dev.vars (gitignored) and fill in
+# what you need; every entry is optional and a poller without its credential
+# reports itself as "unconfigured" on /health rather than failing.
+#
+# Production secrets are set with `wrangler secret put <NAME>` and never
+# written to any file (ADR-004). Keep every upstream token read-only.
+
+# POST /ingest — the README's seeding step uses this value
+INGEST_TOKEN=dev-token
+
+# GET /digest/md
+DIGEST_TOKEN=dev-token
+
+# github, manifests, judge pollers (fine-grained PAT, read-only; one per
+# resource owner as GITHUB_PAT_<OWNER> when GITHUB_OWNERS lists several)
+GITHUB_PAT=
+
+# anthropic_usage, claude_code pollers
+ANTHROPIC_ADMIN_KEY=
+
+# openai_costs poller
+OPENAI_ADMIN_KEY=
+
+# x_usage poller
+X_BEARER_TOKEN=
+
+# cloudflare poller (Account Analytics:Read + D1:Read, never the Global key)
+CLOUDFLARE_API_TOKEN=
+
+# judge poller — sends issue text to TypeSafe; JUDGE_SCOPE in wrangler.jsonc bounds it
+TYPESAFE_API_KEY=
+
+# push notifications (self-hosted ntfy topic URL, optional auth token)
+NTFY_URL=
+NTFY_TOKEN=
