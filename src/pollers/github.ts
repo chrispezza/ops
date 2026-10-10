@@ -249,17 +249,21 @@ export function ciState(target: NonNullable<RepoNode["defaultBranchRef"]>["targe
 
 interface WorkflowRun {
   id: number;
+  event?: string;
   conclusion: string | null;
   run_started_at: string;
   updated_at: string;
   html_url: string;
 }
 
+// A burst of GitHub-managed runs must not push the repo's own off the page.
+const RUN_PAGE = 30;
+
 // REST — workflow run history needs Actions: read. Enhancement metrics only:
 // a token without the grant gets an empty list, never a failed poll.
 async function fetchRuns(pat: string, nameWithOwner: string, branch: string): Promise<WorkflowRun[]> {
   const res = await fetch(
-    `https://api.github.com/repos/${nameWithOwner}/actions/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=10`,
+    `https://api.github.com/repos/${nameWithOwner}/actions/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=${RUN_PAGE}`,
     {
       headers: {
         authorization: `Bearer ${pat}`,
@@ -270,7 +274,11 @@ async function fetchRuns(pat: string, nameWithOwner: string, branch: string): Pr
   );
   if (!res.ok) return [];
   const body = (await res.json()) as { workflow_runs?: WorkflowRun[] };
-  return body.workflow_runs ?? [];
+  // GitHub-managed runs (Dependabot Updates, Pages, CodeQL default setup) come
+  // back as event "dynamic" on the default branch. They are not the repo's CI:
+  // three Dependabot jobs with no patched version to bump to read as a chronic
+  // CI failure on a green main (#101).
+  return (body.workflow_runs ?? []).filter((r) => r.event !== "dynamic");
 }
 
 // Dependabot's GraphQL author login is "dependabot" (REST shows "dependabot[bot]").
@@ -713,10 +721,23 @@ export const github: Poller = {
           });
         }
 
-        // Actions: read — CI health beyond current pass/fail. Gated on HEAD's
-        // own checks, not ciState(): run history is read by branch, and a repo
-        // whose CI runs only on PRs has no current default-branch runs to read.
-        if (repo.defaultBranchRef?.name && head?.statusCheckRollup) {
+        // Actions: read — CI health beyond current pass/fail. Run history is
+        // read by branch, so it is only read when HEAD carries its own checks.
+        // A repo whose CI runs on PRs only has no default-branch runs; its
+        // streak follows ciState() instead of being left at whatever it last
+        // was (signal_latest keeps a metric that stops arriving, #101).
+        if (head && state && !head.statusCheckRollup) {
+          const failing = state === "FAILURE" || state === "ERROR";
+          signals.push({
+            entityId: id,
+            metric: "ci.fail_streak",
+            valueNum: failing ? 1 : 0,
+            severity: 0,
+            url: `${repo.url}/actions`,
+            observedAt: now,
+            dedupeKey: hourBucket,
+          });
+        } else if (repo.defaultBranchRef?.name && head?.statusCheckRollup) {
           const runs = await fetchRuns(pat, repo.nameWithOwner, repo.defaultBranchRef.name);
           const latest = runs[0];
           if (latest) {

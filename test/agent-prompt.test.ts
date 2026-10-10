@@ -55,6 +55,24 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("every open PR has a decision");
   });
 
+  it("does not report a CI failure the poller has stopped observing", () => {
+    // gittunes-app, 2026-10: main went green, the metric stopped arriving, and
+    // a ten-day-old failure kept being handed off as a live finding
+    const TEN_DAYS = 10 * 86_400;
+    const stale = (s: SignalRow): SignalRow => ({ ...s, observed_at: NOW - TEN_DAYS });
+    const signals = [stale(sig("ci.status", null, 3, "failure")), stale(sig("ci.fail_streak", 4, 2)), sig("deps.vuln_count", 2, 2)];
+
+    const prompt = buildAgentPrompt(repo, signals, NOW);
+    expect(prompt).not.toContain("CI is failing");
+    expect(prompt).not.toContain("consecutive CI failures");
+    expect(prompt).toContain("Dependabot vulnerability");
+
+    // the same rows are findings while the poller is still re-observing them
+    const live = buildAgentPrompt({ ...repo, last_seen_at: NOW - TEN_DAYS }, signals, NOW);
+    expect(live).toContain("CI is failing");
+    expect(live).toContain("4 consecutive CI failures");
+  });
+
   it("splits Dependabot PRs from human ones and lists idle issues to decide on", () => {
     const prompt = buildAgentPrompt(
       repo,

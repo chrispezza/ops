@@ -7,10 +7,21 @@ import type { EntityRow, SignalRow } from "./queries";
 // Read here, act there (ADR-001): Ops never dispatches anything.
 // Repos and Workers get prompts; other kinds (vendor consoles, databases) have
 // no agent-actionable surface, so their pages stay prompt-free.
+// Three missed hourly polls: long enough to ride out a failed run, short enough
+// that a fixed repo stops being reported the same morning.
+const STALE_AFTER = 3 * 3600;
+
 export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: number): string | null {
   if (entity.kind === "worker") return buildWorkerPrompt(entity, latest, now);
   if (entity.kind !== "repo") return null;
   const by = (metric: string) => latest.find((s) => s.metric === metric);
+  // The github poller re-observes these every poll. One that fell behind the
+  // entity's own last_seen_at was not re-emitted: the poller saw the repo and
+  // no longer saw the condition, so the row is history, not a finding (#101).
+  const current = (metric: string) => {
+    const s = by(metric);
+    return s && entity.last_seen_at - s.observed_at <= STALE_AFTER ? s : undefined;
+  };
   const link = (s: SignalRow | undefined) => (s?.url ? ` — ${s.url}` : "");
 
   const findings: string[] = [];
@@ -50,17 +61,17 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     done.push("- each expected metric arrives via POST /ingest from the repo's CI (see the ops README)");
   }
 
-  const ci = by("ci.status");
+  const ci = current("ci.status");
   if (ci && ci.severity > 0) {
     findings.push(`- CI is failing on the default branch${link(ci)}`);
     done.push("- CI green on the default branch (ops signal: ci.status = success)");
   }
-  const drift = by("deploy.drift");
+  const drift = current("deploy.drift");
   if (drift && drift.severity > 0) {
     findings.push(`- main is not deployed: ${drift.value_text ?? "the running Worker is behind"}${link(drift)} — check the Deploy workflow`);
     done.push("- the running Worker is the commit on main (ops signal: deploy.drift = 0)");
   }
-  const streak = by("ci.fail_streak");
+  const streak = current("ci.fail_streak");
   if ((streak?.value_num ?? 0) >= 2) {
     // "chronic" only past the signal's own escalation threshold (github.ts
     // flags the streak at ≥3) — the prompt was calling 2 chronic

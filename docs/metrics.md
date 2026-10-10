@@ -40,8 +40,8 @@ Entity: `repo:{owner}/{name}`, category from repo topics (spec §2.4).
 | Metric | Semantics | Value | Severity | Dedupe |
 |---|---|---|---|---|
 | `ci.status` | state | text: `success` / `failure` / `error` / `pending`, from the default branch HEAD's check rollup (or the merged PR head when `main` itself carries no checks, #88) | 3 on `failure` or `error`, else 0 | HEAD commit oid |
-| `ci.duration_ms` | state | wall time of the latest default-branch workflow run | 0 | run id |
-| `ci.fail_streak` | state | consecutive failed runs on the default branch | 2 at ≥ 3 (chronic); the current break is already 3 via `ci.status` | hour |
+| `ci.duration_ms` | state | wall time of the latest default-branch workflow run (GitHub-managed `dynamic` runs such as Dependabot Updates excluded) | 0 | run id |
+| `ci.fail_streak` | state | consecutive failed runs on the default branch, GitHub-managed `dynamic` runs excluded. A repo whose CI runs on PRs only has no such runs: it reports 1 while `ci.status` is failing, else 0 | 2 at ≥ 3 (chronic); the current break is already 3 via `ci.status` | hour |
 | `deploy.drift` | state | this deployment's own repo only (`SELF_REPO`): 1 when the running Worker (`DEPLOYED_SHA`, stamped by the deploy) is not the default branch HEAD, else 0; text names both commits. Not emitted when `DEPLOYED_SHA` is empty | 2 once HEAD has been undeployed for over an hour, else 0 | HEAD oid + deployed sha + overdue flag |
 | `deps.vuln_count` | state | open Dependabot alerts; text breaks down critical / high / moderate-low | 3 if any critical, 2 if any high or grading unavailable, 1 otherwise, 0 at none | hour |
 | `issues.open` | state | open issue count | 1 at ≥ 10 (backlog pressure) | hour |

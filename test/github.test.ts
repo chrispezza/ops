@@ -383,6 +383,41 @@ describe("github poller", () => {
     expect(sig("ci.fail_streak")?.severity).toBe(2); // chronic: 3+ consecutive failures
   });
 
+  it("leaves GitHub-managed runs out of the streak and the duration", async () => {
+    const run = (id: number, conclusion: string, event: string) => ({
+      id,
+      event,
+      conclusion,
+      run_started_at: "2026-08-10T12:00:00Z",
+      updated_at: "2026-08-10T12:01:00Z",
+      html_url: `https://github.com/clownware/gittunes/actions/runs/${id}`,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.includes("/actions/runs")) {
+          // green CI on main, then three failed Dependabot Updates jobs
+          return Response.json({
+            workflow_runs: [run(4, "failure", "dynamic"), run(3, "failure", "dynamic"), run(2, "failure", "dynamic"), run(1, "success", "push")],
+          });
+        }
+        return gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/gittunes",
+            defaultBranchRef: { name: "main", target: { oid: "abc", statusCheckRollup: { state: "SUCCESS" } } },
+          }),
+        ]);
+      }),
+    );
+
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const sig = (metric: string) => result.signals.find((s) => s.metric === metric);
+    expect(sig("ci.fail_streak")?.valueNum).toBe(0);
+    expect(sig("ci.fail_streak")?.severity).toBe(0);
+    expect(sig("ci.duration_ms")?.dedupeKey).toBe("1");
+  });
+
   it("reads ci.status from the merged PR's head when CI runs on PRs only", async () => {
     const merged = (state: string) => ({
       nodes: [{ merged: true, commits: { nodes: [{ commit: { statusCheckRollup: { state } } }] } }],
@@ -427,6 +462,12 @@ describe("github poller", () => {
     expect(ci("repo:clownware/deploys")?.valueText).toBe("failure");
     expect(ci("repo:clownware/deploys")?.severity).toBe(3);
     expect(ci("repo:clownware/direct")).toBeUndefined();
+
+    // no default-branch runs to count: the streak follows ci.status, so a
+    // streak recorded while main still ran CI cannot outlive the fix
+    const streak = (id: string) => result.signals.find((s) => s.entityId === id && s.metric === "ci.fail_streak");
+    expect(streak("repo:clownware/pr-only")?.valueNum).toBe(0);
+    expect(streak("repo:clownware/direct")).toBeUndefined();
   });
 
   it("reports deploy.drift for its own repo once main has been undeployed past the grace hour", async () => {
