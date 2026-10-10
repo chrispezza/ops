@@ -40,13 +40,20 @@ const PR_PAGE = 20;
 const VELOCITY_PAGE = 20;
 const WEEK = 7 * 86_400;
 
-// 25 repos/page: GitHub 502s expensive GraphQL queries, and this one carries
-// vuln nodes + blob lookups + CI rollups per repo — smaller pages keep each
-// request under the cost ceiling.
+// GitHub answers a GraphQL query that runs past about ten seconds with a 502
+// or 504, and this one carries issues, PRs, vuln nodes, blob lookups and CI
+// rollups per repo. Measured 2026-10-10 (#105): 25 repos took 7 to 9 s for one
+// owner and timed out at 11.7 s for the other, failing about every other
+// hourly poll; 10 repos take 2 to 3.5 s. A page that still fails is retried at
+// half the size down to REPO_PAGE_MIN, so growth degrades into more requests
+// instead of a lost poll.
+const REPO_PAGE = 10;
+const REPO_PAGE_MIN = 3;
+
 const QUERY = /* GraphQL */ `
-  query ($owner: String!, $cursor: String) {
+  query ($owner: String!, $cursor: String, $first: Int!) {
     repositoryOwner(login: $owner) {
-      repositories(first: 25, after: $cursor, ownerAffiliations: OWNER, isFork: false) {
+      repositories(first: $first, after: $cursor, ownerAffiliations: OWNER, isFork: false) {
         pageInfo { hasNextPage endCursor }
         nodes {
           name
@@ -201,9 +208,12 @@ interface GraphQLPage {
 
 async function* fetchRepos(pat: string, owner: string): AsyncGenerator<RepoNode> {
   let cursor: string | null = null;
+  // Sticky across pages: an owner whose repos are expensive stays on the
+  // smaller page for the rest of this poll instead of timing out on each one.
+  let first = REPO_PAGE;
   do {
     let res: Response | undefined;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (;;) {
       res = await fetch("https://api.github.com/graphql", {
         method: "POST",
         headers: {
@@ -211,9 +221,10 @@ async function* fetchRepos(pat: string, owner: string): AsyncGenerator<RepoNode>
           "content-type": "application/json",
           "user-agent": "ops-dashboard",
         },
-        body: JSON.stringify({ query: QUERY, variables: { owner, cursor } }),
+        body: JSON.stringify({ query: QUERY, variables: { owner, cursor, first } }),
       });
-      if (res.status < 500) break; // 5xx (incl. GraphQL-cost 502s) gets one retry
+      if (res.status < 500 || first <= REPO_PAGE_MIN) break;
+      first = Math.max(REPO_PAGE_MIN, Math.floor(first / 2));
       await new Promise((resolve) => setTimeout(resolve, 750));
     }
     if (!res || !res.ok) throw new Error(`github: HTTP ${res?.status} for owner ${owner}`);
