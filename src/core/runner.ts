@@ -1,6 +1,6 @@
 import { POLLERS } from "../pollers";
 import type { KnownEntity, Poller, PollerCtx, Schedule, SignalInsert } from "../pollers/types";
-import { insertSignals, upsertEntities } from "./store";
+import { insertSignals, retractUnobserved, upsertEntities } from "./store";
 
 function makeCtx(db: D1Database): PollerCtx {
   return {
@@ -32,6 +32,7 @@ export interface RunSummary {
   ok: boolean;
   error?: string;
   notes?: string[]; // succeeded, with coverage caveats (PollerResult.notes)
+  retracted?: number; // latest pointers dropped for metrics no longer emitted (ADR-008)
   entities: number;
   signals: number;
   durationMs: number;
@@ -56,10 +57,22 @@ export async function runPollers(
       const result = await poller.poll(env, ctx);
       await upsertEntities(env.DB, result.entities, now);
       await insertSignals(env.DB, poller.id, result.signals);
+      // Archived entities are frozen, not monitored: the poller emits nothing
+      // for them on purpose and their last rows stay as the audit record.
+      const retracted = poller.retractUnobserved
+        ? await retractUnobserved(
+            env.DB,
+            poller.id,
+            result.entities.filter((e) => !e.archived).map((e) => e.id),
+            Object.entries(poller.metricSemantics).filter(([, kind]) => kind === "state").map(([metric]) => metric),
+            new Set(result.signals.map((s) => `${s.entityId}|${s.metric}`)),
+          )
+        : 0;
       summary = {
         pollerId: poller.id,
         ok: true,
         ...(result.notes?.length ? { notes: result.notes } : {}),
+        ...(retracted ? { retracted } : {}),
         entities: result.entities.length,
         signals: result.signals.length,
         durationMs: Date.now() - t0,

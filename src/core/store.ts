@@ -90,3 +90,31 @@ export async function insertSignals(db: D1Database, source: string, signals: Sig
     ...signals.map((s) => refresh.bind(s.entityId, s.metric, s.dedupeKey)),
   ]);
 }
+
+// ADR-008: a state metric its poller stopped emitting is no longer current.
+// The rows stay (ADR-002); only the pointer goes, so every reader of "latest"
+// stops showing it and nobody has to remember an age check. Scoped to rows
+// this source wrote: a metric pushed through /ingest under the same name is
+// not the poller's to retract.
+export async function retractUnobserved(
+  db: D1Database,
+  source: string,
+  seenEntityIds: string[],
+  metrics: string[],
+  emitted: Set<string>, // `${entityId}|${metric}` for every signal of this run
+): Promise<number> {
+  if (seenEntityIds.length === 0 || metrics.length === 0) return 0;
+  const seen = new Set(seenEntityIds);
+  const owned = new Set(metrics);
+  const pointers = await db
+    .prepare("SELECT l.entity_id, l.metric FROM signal_latest l JOIN signals s ON s.id = l.signal_id WHERE s.source = ?1")
+    .bind(source)
+    .all<{ entity_id: string; metric: string }>();
+  const gone = pointers.results.filter(
+    (p) => seen.has(p.entity_id) && owned.has(p.metric) && !emitted.has(`${p.entity_id}|${p.metric}`),
+  );
+  if (gone.length === 0) return 0;
+  const del = db.prepare("DELETE FROM signal_latest WHERE entity_id = ?1 AND metric = ?2");
+  await db.batch(gone.map((p) => del.bind(p.entity_id, p.metric)));
+  return gone.length;
+}

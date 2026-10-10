@@ -314,6 +314,7 @@ function weekCount(nodes: (string | null)[], now: number): { count: number; capp
 export const github: Poller = {
   id: "github",
   schedule: "hourly",
+  retractUnobserved: true,
   metricSemantics: {
     "ci.status": "state",
     "ci.duration_ms": "state",

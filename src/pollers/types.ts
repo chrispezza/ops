@@ -63,5 +63,10 @@ export interface Poller {
   id: string; // "github", "anthropic_usage", …
   metricSemantics: Record<string, "state" | "interval">; // every metric this poller emits
   schedule: Schedule;
+  // ADR-008: every state metric is re-emitted on every poll for every entity
+  // it is true of, so "saw the entity, emitted nothing for the metric" means
+  // the condition is gone and the runner drops the latest pointer. Opt-in: a
+  // poller that covers only part of its entities per run must leave it unset.
+  retractUnobserved?: true;
   poll(env: Env, ctx: PollerCtx): Promise<PollerResult>;
 }

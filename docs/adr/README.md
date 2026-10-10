@@ -12,9 +12,10 @@ struck through with a pointer, and a change of rule is a dated
 | [002](002-append-only-signals.md) | Signals are append-only; current state is derived by query; each metric is `state` or `interval`. | Accepted; amended 2026-09-30 (retention sweep) |
 | [003](003-static-poller-array.md) | Pollers are one file plus one line in a static array. No registry until three deployments diverge. | Accepted |
 | [004](004-public-shell-private-config.md) | Public shell, private config. A poller ships publicly when its target is a var or secret, never a resource named in code. | Accepted; amended 2026-08-13, 2026-09-30 |
-| [005](005-signal-latest-pointer.md) | `signal_latest` is a pointer table maintained in the write path, so current-state reads stop scaling with history. | Accepted |
+| [005](005-signal-latest-pointer.md) | `signal_latest` is a pointer table maintained in the write path, so current-state reads stop scaling with history. | Accepted; amended 2026-10-10 (retraction) |
 | [006](006-advisory-judge-signals.md) | `judge.*` signals are advisory model output pinned at severity 0 and graded against a reference chain. | Accepted; amended 2026-09-18 ×3, noted 2026-09-23 |
 | [007](007-d1-row-write-budget.md) | What a signal costs in D1 row writes, and why the account moved to Workers Paid rather than trade history or indexes. | Accepted |
+| [008](008-retract-unobserved-state.md) | A `state` metric that an opted-in poller stops emitting loses its latest pointer; history stays, and no reader shows the old row as current. | Accepted |
 
 ## Writing one
 
