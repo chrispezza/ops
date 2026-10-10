@@ -1,0 +1,57 @@
+name: Deploy
+
+# Runs only after CI succeeds on a push to main, so the tests are not paid for
+# twice. workflow_run always executes the workflow file from the default branch.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Never run two deploys at once, and never cancel one mid-flight.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: d8c9e6e20235d4f8ac60c6c17d0bbc2e
+    steps:
+      - name: Require the deploy token
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN repo secret is not set (see docs/runbook.md, Deploying)."
+            exit 1
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx wrangler types --strict-vars=false
+
+      # Migrations stay a human step (they cannot be rolled back). If any are
+      # unapplied, stop and fail loudly instead of shipping code that expects
+      # a schema production does not have. Stateless, so a second merge cannot
+      # slip past a migration an earlier merge left pending.
+      - name: Refuse to deploy over unapplied migrations
+        run: |
+          out="$(npx wrangler d1 migrations list ops --remote)"
+          echo "$out"
+          if ! grep -q "No migrations to apply" <<<"$out"; then
+            echo "::error::Unapplied D1 migrations. Run 'wrangler d1 migrations apply ops --remote', then re-run this workflow."
+            exit 1
+          fi
+
+      - run: npx wrangler deploy
