@@ -206,7 +206,9 @@ export async function emitHygieneSignals(
   for (const entity of entities.results) {
     for (const metric of expected[entity.category] ?? []) {
       const present = await db
-        .prepare("SELECT 1 FROM signals WHERE entity_id = ?1 AND metric = ?2 LIMIT 1")
+        // Current, not "ever": a metric whose pointer was retracted (ADR-008)
+        // is missing again, however long its history.
+        .prepare("SELECT 1 FROM signal_latest WHERE entity_id = ?1 AND metric = ?2")
         .bind(entity.id, metric)
         .first();
       // One hygiene metric PER expected metric — packing them under a single

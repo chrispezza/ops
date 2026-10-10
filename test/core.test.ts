@@ -177,6 +177,12 @@ describe("hygiene pass", () => {
     hygiene = (await latestSignals(env.DB, "repo:site")).filter((s) => s.metric.startsWith("hygiene.missing."));
     expect(hygiene).toHaveLength(1);
     expect(hygiene[0]?.severity).toBe(0);
+
+    // history alone does not count: with no current row the metric is missing (ADR-008)
+    await env.DB.prepare("DELETE FROM signal_latest WHERE entity_id = 'repo:site' AND metric = 'lhci.performance'").run();
+    await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW + 180);
+    hygiene = (await latestSignals(env.DB, "repo:site")).filter((s) => s.metric.startsWith("hygiene.missing."));
+    expect(hygiene[0]?.severity).toBe(1);
   });
 
   it("flags untagged repos as hygiene findings and skips archived entities", async () => {

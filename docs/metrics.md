@@ -35,7 +35,9 @@ groups rows on the entity page (`DOMAIN_LABELS`) and the heatmap.
 
 ## `github` poller — hourly, one GraphQL query per owner
 
-Entity: `repo:{owner}/{name}`, category from repo topics (spec §2.4).
+Entity: `repo:{owner}/{name}`, category from repo topics (spec §2.4). A `state`
+metric this poller stops emitting for a repo it still sees is retracted: it
+disappears from every current view and stays in history (ADR-008).
 
 | Metric | Semantics | Value | Severity | Dedupe |
 |---|---|---|---|---|

@@ -4,14 +4,14 @@ description: >-
   Current-state reads resolve through a pointer table maintained in the same
   transaction as every signal write, instead of window-function scans over the
   whole append-only signals table.
-lastUpdated: 2026-09-02T00:00:00.000Z
+lastUpdated: 2026-10-10T00:00:00.000Z
 tableOfContents: true
 pagefind: true
 ---
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-10-10: pointers can be retracted (ADR-008).
 
 ## Context
 
@@ -49,6 +49,17 @@ Option 3. `signal_latest` is an **index over signals**, not state: it holds a ro
 ### Negative
 - One accepted inexactness: if the *pointed* row is re-observed with an **older** `observed_at` under the same dedupe key, the pointer keeps it even if another row is now newer. Pollers observe forward in time, so this does not occur in practice; a re-run of the migration's backfill statement repairs it.
 - Any future writer that bypasses `insertSignals` leaves the pointer stale. `insertSignals` is the contract; raw `INSERT INTO signals` is out of bounds.
+
+## Amendment: 2026-10-10, retraction
+
+[ADR-008](008-retract-unobserved-state.md) lets the runner delete a pointer
+when an opted-in poller stops emitting a `state` metric. What changed: the
+table is no longer a pure function of `signals`, so the backfill statement is
+a repair for a *missing* pointer only; run after a retraction it restores the
+old row until the next poll removes it again. What did not change: the pointer
+still holds nothing a reader displays, `insertSignals` is still the only
+writer of signal rows, and the pointed row is still never deleted by
+retention.
 
 ## Validation
 
