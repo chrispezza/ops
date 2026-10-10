@@ -149,7 +149,9 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
   `notify`, `maintenance`, `d1`, `deps`, `docs`).
 - Branch from `main` as `type/short-slug`; open a PR; never push to `main`.
   CI must be green before merge. Do not bypass hooks with `--no-verify`.
-- Deploys are manual (`wrangler deploy` from `main`), never from a branch.
+- Deploys run from `main` only, via `.github/workflows/deploy.yml` after CI is green;
+  never deploy from a branch. Migrations are applied by hand first (the deploy refuses
+  to run over unapplied ones).
 - Found work: if it is small, in this repo and low-risk, fix it in the current
   PR and list it in the summary. Otherwise `gh issue create` in the repo it
   belongs to. Never leave it only in chat.

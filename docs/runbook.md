@@ -150,8 +150,19 @@ has been applied.
 
 ## Deploying
 
-Deploys are manual and always from `main`; CI's `wrangler deploy --dry-run` is
-the gate, not the deploy.
+Merges to `main` deploy automatically: `.github/workflows/deploy.yml` runs after
+CI succeeds on the push and calls `wrangler deploy`. It refuses to run while any
+D1 migration is unapplied (the job fails with an error annotation), because
+migrations are never automatic. For a change that adds one, apply it first, then
+re-run the failed Deploy workflow:
+
+```sh
+wrangler d1 migrations apply ops --remote
+gh run rerun --failed -R chrispezza/ops $(gh run list -R chrispezza/ops -w Deploy -L1 --json databaseId -q '.[0].databaseId')
+```
+
+Needs the `CLOUDFLARE_API_TOKEN` repo secret (Workers Scripts: Edit and
+D1: Edit, scoped to this account). To deploy by hand instead, from `main` only:
 
 ```sh
 git checkout main && git pull
