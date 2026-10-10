@@ -55,6 +55,11 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     findings.push(`- CI is failing on the default branch${link(ci)}`);
     done.push("- CI green on the default branch (ops signal: ci.status = success)");
   }
+  const drift = by("deploy.drift");
+  if (drift && drift.severity > 0) {
+    findings.push(`- main is not deployed: ${drift.value_text ?? "the running Worker is behind"}${link(drift)} — check the Deploy workflow`);
+    done.push("- the running Worker is the commit on main (ops signal: deploy.drift = 0)");
+  }
   const streak = by("ci.fail_streak");
   if ((streak?.value_num ?? 0) >= 2) {
     // "chronic" only past the signal's own escalation threshold (github.ts

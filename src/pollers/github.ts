@@ -88,6 +88,7 @@ const QUERY = /* GraphQL */ `
             target {
               ... on Commit {
                 oid
+                committedDate
                 statusCheckRollup { state }
                 # CI that runs on PRs only leaves a squash/merge commit on the
                 # default branch with no checks of its own; its PR head has them.
@@ -173,6 +174,7 @@ interface RepoNode {
     name: string;
     target: {
       oid: string;
+      committedDate?: string;
       statusCheckRollup: { state: string } | null;
       associatedPullRequests?: {
         nodes?: {
@@ -286,6 +288,9 @@ export function majorBump(title: string): { name: string; from: number; to: numb
   return from === to ? null : { name: m[1] ?? "", from, to };
 }
 
+// How long main may sit ahead of the running Worker before it is a finding.
+const DEPLOY_GRACE = 3600;
+
 const daysSince = (iso: string, now: number): number => Math.floor((now - Math.floor(Date.parse(iso) / 1000)) / 86_400);
 const epoch = (iso: string): number => Math.floor(Date.parse(iso) / 1000);
 const trimTitle = (t: string): string => (t.length > 80 ? `${t.slice(0, 77)}…` : t);
@@ -305,6 +310,7 @@ export const github: Poller = {
     "ci.status": "state",
     "ci.duration_ms": "state",
     "ci.fail_streak": "state",
+    "deploy.drift": "state",
     "deps.vuln_count": "state",
     "issues.open": "state",
     "prs.open": "state",
@@ -385,6 +391,29 @@ export const github: Poller = {
             url: `${repo.url}/actions`,
             observedAt: now,
             dedupeKey: head.oid, // upstream event id — preferred over time bucket
+          });
+        }
+
+        // This deployment's own repo: is the running Worker the commit on
+        // main? A merged fix that never shipped looks exactly like a fixed
+        // one from every other signal (#88 sat undeployed for 13 days).
+        // DEPLOYED_SHA is stamped by the deploy; without it there is nothing
+        // to compare, so nothing is claimed.
+        const deployed = env.DEPLOYED_SHA;
+        if (head && deployed && repo.nameWithOwner === env.SELF_REPO) {
+          const behind = head.oid !== deployed;
+          // A deploy takes a minute or two after the merge, and one waiting
+          // on a hand-applied migration takes as long as the human does.
+          const overdue = behind && head.committedDate != null && now - epoch(head.committedDate) > DEPLOY_GRACE;
+          signals.push({
+            entityId: id,
+            metric: "deploy.drift",
+            valueNum: behind ? 1 : 0,
+            valueText: behind ? `running ${deployed.slice(0, 7)}, main is ${head.oid.slice(0, 7)}` : deployed.slice(0, 7),
+            severity: overdue ? 2 : 0,
+            url: `${repo.url}/actions`,
+            observedAt: now,
+            dedupeKey: `${head.oid}:${deployed}:${overdue ? 1 : 0}`, // one row per state, not per hour
           });
         }
 

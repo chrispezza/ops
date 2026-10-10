@@ -37,6 +37,12 @@
 		"GITHUB_OWNERS": "chrispezza,clownware",
 		"OPS_URL": "https://ops.chris-d8c.workers.dev",
 		"CF_ACCOUNT_ID": "d8c9e6e20235d4f8ac60c6c17d0bbc2e",
+		// "owner/repo" this Worker is deployed from. With DEPLOYED_SHA it drives
+		// deploy.drift (is the running code the commit on main?); omit to disable.
+		"SELF_REPO": "chrispezza/ops",
+		// Stamped at deploy time (`--var DEPLOYED_SHA:<sha>`, see deploy.yml and
+		// `npm run deploy`). Left empty here on purpose: never hand-edit.
+		"DEPLOYED_SHA": "",
 		// "owner/repo" of a Claude Code plugin marketplace; omit to leave the manifests poller dormant
 		"MARKETPLACE_REPO": "clownware/plugins",
 		// How much issue text the judge poller may send to TypeSafe: "all" (title
