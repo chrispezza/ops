@@ -501,6 +501,37 @@ describe("github poller", () => {
     expect(await poll(self("bbbbbbb2", ago(7200)), { DEPLOYED_SHA: "" })).toHaveLength(0);
   });
 
+  it("retries a timed-out page at half the size instead of losing the poll", async () => {
+    const sizes: number[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const { variables } = JSON.parse(String(init?.body)) as { variables: { first: number; cursor: string | null } };
+        sizes.push(variables.first);
+        if (variables.first > 5) return new Response("timeout", { status: 502 });
+        const last = variables.cursor === "c1";
+        return Response.json({
+          data: {
+            repositoryOwner: {
+              repositories: {
+                pageInfo: { hasNextPage: !last, endCursor: last ? null : "c1" },
+                nodes: [repoNode({ name: last ? "b" : "a", nameWithOwner: `clownware/${last ? "b" : "a"}` })],
+              },
+            },
+          },
+        });
+      }),
+    );
+
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    expect(result.entities.map((e) => e.name)).toEqual(["a", "b"]);
+    expect(sizes).toEqual([10, 5, 5]); // halved once, and the smaller page sticks
+
+    // at the floor a 5xx is a real failure, reported as before
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 504 })));
+    await expect(github.poll(testEnv, { listEntities: async () => [] })).rejects.toThrow("github: HTTP 504 for owner clownware");
+  });
+
   it("degrades to core metrics when the token lacks Actions/Contents grants", async () => {
     vi.stubGlobal(
       "fetch",
