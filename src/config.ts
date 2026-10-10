@@ -55,6 +55,7 @@ export const METRIC_LABELS: Record<string, string> = {
   "ci.status": "CI status",
   "ci.duration_ms": "CI duration",
   "ci.fail_streak": "CI fail streak",
+  "deploy.drift": "deploy drift",
   "deps.vuln_count": "Dependabot vulns",
   "issues.open": "open issues",
   "prs.open": "open PRs",

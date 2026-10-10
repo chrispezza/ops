@@ -429,6 +429,37 @@ describe("github poller", () => {
     expect(ci("repo:clownware/direct")).toBeUndefined();
   });
 
+  it("reports deploy.drift for its own repo once main has been undeployed past the grace hour", async () => {
+    const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    const self = (oid: string, committedDate: string) =>
+      repoNode({
+        name: "ops",
+        nameWithOwner: "clownware/ops",
+        defaultBranchRef: { name: "main", target: { oid, committedDate, statusCheckRollup: null } },
+      });
+    const poll = async (node: unknown, vars: Partial<Env>) => {
+      vi.stubGlobal("fetch", vi.fn(async () => gqlResponse([node, repoNode({ defaultBranchRef: { name: "main", target: { oid: "zzz", statusCheckRollup: null } } })])));
+      const result = await github.poll({ ...testEnv, SELF_REPO: "clownware/ops", ...vars } as Env, { listEntities: async () => [] });
+      return result.signals.filter((s) => s.metric === "deploy.drift");
+    };
+
+    const current = await poll(self("aaaaaaa1", ago(7200)), { DEPLOYED_SHA: "aaaaaaa1" });
+    expect(current).toHaveLength(1); // only the deployment's own repo
+    expect(current[0]?.valueNum).toBe(0);
+    expect(current[0]?.severity).toBe(0);
+
+    const inFlight = await poll(self("bbbbbbb2", ago(120)), { DEPLOYED_SHA: "aaaaaaa1" });
+    expect(inFlight[0]?.valueNum).toBe(1);
+    expect(inFlight[0]?.severity).toBe(0);
+
+    const overdue = await poll(self("bbbbbbb2", ago(7200)), { DEPLOYED_SHA: "aaaaaaa1" });
+    expect(overdue[0]?.severity).toBe(2);
+    expect(overdue[0]?.valueText).toBe("running aaaaaaa, main is bbbbbbb");
+
+    // an unstamped (hand) deploy claims nothing rather than guessing
+    expect(await poll(self("bbbbbbb2", ago(7200)), { DEPLOYED_SHA: "" })).toHaveLength(0);
+  });
+
   it("degrades to core metrics when the token lacks Actions/Contents grants", async () => {
     vi.stubGlobal(
       "fetch",

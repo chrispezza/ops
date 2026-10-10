@@ -161,15 +161,17 @@ wrangler d1 migrations apply ops --remote
 gh run rerun --failed -R chrispezza/ops $(gh run list -R chrispezza/ops -w Deploy -L1 --json databaseId -q '.[0].databaseId')
 ```
 
-Needs the `CLOUDFLARE_API_TOKEN` repo secret (Workers Scripts: Edit and
-D1: Edit, scoped to this account). To deploy by hand instead, from `main` only:
+Needs the `CLOUDFLARE_API_TOKEN` secret in the `production` GitHub environment
+(restricted to `main`; Workers Scripts: Edit and D1: Edit, scoped to this
+account). If a deploy fails or stalls, `deploy.drift` on the ops repo's own
+entity goes to severity 2 once `main` has been undeployed for over an hour. To deploy by hand instead, from `main` only:
 
 ```sh
 git checkout main && git pull
 npm ci
 npm run types && npm run typecheck && npm test
 wrangler d1 migrations apply ops --remote     # only if migrations/ changed
-wrangler deploy
+npm run deploy                                # stamps DEPLOYED_SHA for deploy.drift
 ```
 
 Then open `/health` and press **run all pollers now** (or wait for the next hourly cron)
