@@ -74,6 +74,8 @@ const MAX_JUDGMENTS = 300; // run-wide Jev calls — the real bound on the invoc
 const ISSUE_FETCH = 60; // open issues per GraphQL page
 const MAX_PAGES = 4; // pages per repo, so a long backlog drains over several runs
 const MAX_REPOS = 30;
+const PROVENANCE_CAP = 40; // REST label-origin lookups per repo per run (#84)
+const EVENT_PAGES = 3; // pages of 100 events per issue when reading label origin
 const BODY_CHARS = 1500; // per issue, to bound request size
 const PROPOSALS_KEPT = 15; // outstanding proposals remembered per repo
 
@@ -162,6 +164,13 @@ interface IssueNode {
   body: string | null;
   labels?: { nodes: { name: string }[] };
   timelineItems?: { nodes: (LabeledEvent | Record<string, never>)[] };
+  // Filled by lookupProvenance: lowercased label name -> slug of the GitHub App
+  // that applied it. GraphQL's LabeledEvent cannot say (#84), so without this a
+  // label the Claude App applied with the maintainer's token reads as the
+  // maintainer's own.
+  appByLabel?: Record<string, string>;
+  // The lookup failed, so who applied this issue's labels is not known.
+  provenanceUnknown?: boolean;
 }
 
 interface RepoIssuesPage {
@@ -260,6 +269,33 @@ async function fetchIssues(
   return { total, nodes, complete };
 }
 
+// Which GitHub App, if any, applied each label an issue still carries. REST
+// only: GraphQL's LabeledEvent has no performed-via field. The newest event for
+// a label wins, so a human re-applying a label an App once set owns it again.
+async function fetchLabelApps(pat: string, owner: string, name: string, number: number): Promise<Record<string, string>> {
+  const apps: Record<string, string> = {};
+  for (let page = 1; page <= EVENT_PAGES; page++) {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${name}/issues/${number}/events?per_page=100&page=${page}`, {
+      headers: { authorization: `Bearer ${pat}`, accept: "application/vnd.github+json", "user-agent": "ops-dashboard" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const events = (await res.json()) as {
+      event?: string;
+      label?: { name?: string };
+      performed_via_github_app?: { slug?: string } | null;
+    }[];
+    for (const e of events) {
+      const label = e.label?.name?.toLowerCase();
+      if (e.event !== "labeled" || !label) continue;
+      const slug = e.performed_via_github_app?.slug;
+      if (slug) apps[label] = slug;
+      else delete apps[label];
+    }
+    if (events.length < 100) break;
+  }
+  return apps;
+}
+
 // The severity github.ts would assign this issue from its labels, or null when
 // it carries none that LABEL_SEVERITY recognises. Provenance is deliberately
 // ignored here: this decides whether an issue is ALREADY tiered, and an issue
@@ -272,7 +308,11 @@ export function labelSeverity(issue: IssueNode): number | null {
   return graded.length > 0 ? Math.max(...graded) : null;
 }
 
-type Actor = { login: string; __typename: string };
+type Actor = { login: string; __typename: string; app?: string };
+
+// An app slug no reference list can contain: the lookup failed, so the label's
+// origin is unknown and it must count as neither human nor reference.
+const UNKNOWN_APP = "?unknown";
 
 // GraphQL reports a GitHub App as login "x" and REST as "x[bot]"; a configured
 // list should match either spelling.
@@ -287,7 +327,8 @@ function labelsBy(issue: IssueNode, accept: (actor: Actor) => boolean): string[]
     const event = node as LabeledEvent;
     const name = event.label?.name?.toLowerCase();
     if (!name || !current.has(name)) return [];
-    return event.actor && accept(event.actor) ? [name] : [];
+    const app = issue.provenanceUnknown ? UNKNOWN_APP : issue.appByLabel?.[name];
+    return event.actor && accept(app ? { ...event.actor, app } : event.actor) ? [name] : [];
   });
 }
 
@@ -299,9 +340,14 @@ const maxSeverity = (labels: string[]): number | null => {
 // A GitHub App (the Claude app included) is actor __typename "Bot". An
 // automation driving the REST API with a person's PAT is indistinguishable
 // from that person here, so JUDGE_CALIBRATION_EXCLUDE names those logins.
+//
+// The Claude App applies labels with the maintainer's own token, so GraphQL
+// reports those as that user. The REST event says which App did it (#84); a
+// label performed via any App is model output, never a person's.
 const isHuman = (excluded: ReadonlySet<string>) => (actor: Actor) =>
-  actor.__typename === "User" && !excluded.has(normalizeLogin(actor.login));
-const isReference = (actors: ReadonlySet<string>) => (actor: Actor) => actors.has(normalizeLogin(actor.login));
+  actor.__typename === "User" && actor.app === undefined && !excluded.has(normalizeLogin(actor.login));
+const isReference = (actors: ReadonlySet<string>) => (actor: Actor) =>
+  actors.has(normalizeLogin(actor.login)) || (actor.app !== undefined && actors.has(normalizeLogin(actor.app)));
 
 // The severity a HUMAN assigned, or null when no severity label on the issue
 // was applied by a person. This is the top of the calibration chain (ADR-006
@@ -540,6 +586,47 @@ export const judge: Poller = {
         continue;
       }
       reached++;
+
+      // Label origin (#84). Only an issue whose current severity or review label
+      // GraphQL attributes to a person can be an App acting with that person's
+      // token, and only that case needs the REST event to tell. Skipped when no
+      // reference actor is configured: the human-only rule is then exact as is.
+      if (referenceActors.size > 0) {
+        const current = (i: IssueNode) => new Set((i.labels?.nodes ?? []).map((l) => l.name.toLowerCase()));
+        const ambiguous = nodes.filter((i) => {
+          const have = current(i);
+          return (i.timelineItems?.nodes ?? []).some((n) => {
+            const e = n as LabeledEvent;
+            const label = e.label?.name?.toLowerCase();
+            return (
+              e.actor?.__typename === "User" &&
+              label !== undefined &&
+              have.has(label) &&
+              (LABEL_SEVERITY[label] !== undefined || label === REVIEWED_LABEL)
+            );
+          });
+        });
+        const lookups = ambiguous.slice(0, Math.min(PROVENANCE_CAP, budget));
+        budget -= lookups.length;
+        let failed = 0;
+        let lastError = "";
+        for (const issue of lookups) {
+          try {
+            issue.appByLabel = await fetchLabelApps(pat, owner, name, issue.number);
+          } catch (err) {
+            issue.provenanceUnknown = true;
+            failed++;
+            lastError = err instanceof Error ? err.message : String(err);
+          }
+        }
+        for (const issue of ambiguous.slice(lookups.length)) issue.provenanceUnknown = true;
+        if (ambiguous.length > lookups.length) {
+          notes.push(`${ref}: label origin read for ${lookups.length} of ${ambiguous.length} labelled issues; the rest are excluded from calibration`);
+        }
+        if (failed > 0) {
+          notes.push(`${ref}: label origin unavailable for ${failed} issue(s) (${lastError}); excluded from calibration`);
+        }
+      }
 
       const withSeverity = nodes.map((issue) => {
         const human = humanLabelSeverity(issue, excluded);

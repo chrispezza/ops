@@ -160,7 +160,7 @@ other number. `JUDGE_SCOPE` bounds what issue text leaves the deployment.
 |---|---|---|---|---|
 | `judge.issue_tier` | state | count of outstanding proposals (untiered issues the judge thinks need a label); text lists up to five as `#n title (confidence) label` | 0 always | day |
 | `judge.tier_agreement` | state | percent of a blind sample where the judge matched the *reference tier* (the maintainer's label, else a `JUDGE_REFERENCE_ACTORS` label); text carries the sample size and its human/reference split | 0 always | day |
-| `judge.tier_agreement_human` | state | the same against human-applied labels only | 0 always | day |
+| `judge.tier_agreement_human` | state | the same against human-applied labels only (a label performed via any GitHub App, the Claude App included, is never human even though GitHub attributes it to the maintainer; [ADR-006](adr/006-advisory-judge-signals.md)) | 0 always | day |
 | `judge.reference_agreement` | state | of the reference actor's tiers a human reviewed (overrode, or accepted with `triaged`), the percent that stood | 0 always | day |
 
 An empty sample is reported as such in the text rather than as 0 %.
