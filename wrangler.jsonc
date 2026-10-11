@@ -69,6 +69,12 @@
 		// divided by 30 — the daily pace that keeps the month inside the allowance.
 		"D1_ROW_READS_PER_DAY": "833000000",
 		"D1_ROW_WRITES_PER_DAY": "1660000",
+		// Hostnames (comma-separated, exact) of monitored sites that sit behind
+		// Cloudflare Access. The uptime poller sends its Access service token
+		// (secrets UPTIME_ACCESS_CLIENT_ID / UPTIME_ACCESS_CLIENT_SECRET) to these
+		// hosts and to no other, so it checks the site instead of the login page.
+		// A gated site not listed here reports "behind Access; not checked".
+		"UPTIME_ACCESS_HOSTS": "deprep.pezza.dev",
 		// Verify the Cloudflare Access assertion inside the Worker instead of trusting
 		// that the edge policy is present. Both must be set to enable it: the team name
 		// from <team>.cloudflareaccess.com, and the Access application's AUD tag

@@ -32,7 +32,9 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
   // page — the prompt used to skip it entirely (only CI/deps/PRs/issues were
   // read), so the hand-off could omit the very finding that made the row red.
   const site = by("site.up");
-  if (site && site.severity > 0) {
+  // value_num 0 is the site answering badly. A check that never reached the
+  // site (behind Access, #111) has no number and is not a repo-side finding.
+  if (site && site.severity > 0 && site.value_num === 0) {
     findings.push(`- the deployed site is DOWN${link(site)} — highest priority`);
     done.push("- the site responds successfully (ops signal: site.up = up)");
   }

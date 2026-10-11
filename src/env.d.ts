@@ -13,6 +13,10 @@ interface Env {
   // TypeSafe is the vendor; Jev is the model it serves. Named for the vendor
   // like every other credential here, so a second TypeSafe model needs no rename.
   TYPESAFE_API_KEY?: string;
+  // Cloudflare Access service token for the uptime poller. Sent only to the
+  // hosts in UPTIME_ACCESS_HOSTS (#111).
+  UPTIME_ACCESS_CLIENT_ID?: string;
+  UPTIME_ACCESS_CLIENT_SECRET?: string;
 }
 
 declare namespace Cloudflare {
@@ -27,5 +31,7 @@ declare namespace Cloudflare {
     NTFY_URL?: string;
     NTFY_TOKEN?: string;
     TYPESAFE_API_KEY?: string;
+    UPTIME_ACCESS_CLIENT_ID?: string;
+    UPTIME_ACCESS_CLIENT_SECRET?: string;
   }
 }

@@ -25,7 +25,9 @@ export function formatSignalValue(
   if (s.metric.startsWith("hygiene.missing")) return s.severity > 0 ? "missing" : "present";
   if (s.metric === "hygiene.uncategorized") return s.severity > 0 ? "untagged" : `tagged ${s.value_text}`;
   if (s.metric === "hygiene.inactive") return s.value_text ?? "—";
-  if (s.metric === "site.up") return s.value_num === 1 ? "up" : "down";
+  // no number = the check never reached the site (behind Access, #111); say
+  // that instead of rounding it to "down"
+  if (s.metric === "site.up") return n === 1 ? "up" : n === 0 ? "down" : (s.value_text ?? "not checked");
   if (n == null) return s.value_text ?? "—";
   if (s.metric === "repo.pushed_at") return `${timeAgo(n, now)} ago`;
   if (s.metric.startsWith("spend.") || s.metric === "budget.status" || s.metric === "balance.usd")

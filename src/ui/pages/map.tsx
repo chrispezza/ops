@@ -335,7 +335,7 @@ function Chips(props: { row: TriageRow; now: number; stale: ReadonlySet<string> 
   // site.up appears only for repos with a deployed homepage — not expected of
   // every repo, so absence renders nothing rather than a warning dash
   const site = l["site.up"] && (
-    <C label="site" signal={l["site.up"]} now={now} render={(s) => (s.value_num === 1 ? "up" : "DOWN")} />
+    <C label="site" signal={l["site.up"]} now={now} render={(s) => (s.value_num === 1 ? "up" : s.value_num === 0 ? "DOWN" : "gated")} />
   );
   const branches = l["repo.branches"] && <C label="branches" signal={l["repo.branches"]} now={now} />; // "br" decoded to nothing, even in its tooltip
   // docs health earns a chip only while incomplete — complete docs are silence
