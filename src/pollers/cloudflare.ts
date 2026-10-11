@@ -98,6 +98,48 @@ interface D1GqlResponse {
 
 const compact = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(0)}k` : String(n));
 
+// API token inventory (#98): metadata only, values are never returned. User-
+// and account-owned tokens live behind different endpoints and different read
+// permissions (API Tokens Read vs Account API Tokens Read), so both are tried
+// and either may be unreachable with the token this deployment holds.
+const TOKEN_EXPIRY_WINDOW = 30 * DAY;
+const TOKEN_NEW_WINDOW = 7 * DAY;
+const TOKEN_PAGE_LIMIT = 5; // pages of 50 per source; past it the inventory says so
+const ACCOUNT_WIDE_RESOURCES = ["com.cloudflare.api.account.*", "com.cloudflare.api.account.zone.*"];
+
+interface ApiToken {
+  id: string;
+  name: string;
+  status?: string;
+  issued_on?: string;
+  expires_on?: string | null;
+  policies?: { effect?: string; resources?: Record<string, unknown> }[];
+}
+
+// A token is "all accounts" when any allow-policy names the account wildcard
+// (or every zone of every account) instead of one account's id.
+const spansAllAccounts = (t: ApiToken): boolean =>
+  (t.policies ?? []).some(
+    (p) => p.effect !== "deny" && Object.keys(p.resources ?? {}).some((k) => ACCOUNT_WIDE_RESOURCES.includes(k)),
+  );
+
+async function listTokens(
+  url: string,
+  headers: Record<string, string>,
+): Promise<{ tokens: ApiToken[]; truncated: boolean } | { error: string }> {
+  const tokens: ApiToken[] = [];
+  for (let page = 1; page <= TOKEN_PAGE_LIMIT; page++) {
+    // a network failure here must not cost the poller its D1 and Workers signals
+    const res = await fetch(`${url}?per_page=50&page=${page}`, { headers }).catch(() => null);
+    if (!res) return { error: "network error" };
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    const body = (await res.json()) as { result?: ApiToken[]; result_info?: { total_pages?: number } };
+    tokens.push(...(body.result ?? []));
+    if (page >= (body.result_info?.total_pages ?? 1)) return { tokens, truncated: false };
+  }
+  return { tokens, truncated: true };
+}
+
 interface DayTotals {
   requests: number;
   errors: number;
@@ -115,6 +157,11 @@ export const cloudflare: Poller = {
     "d1.rows_written": "interval",
     "d1.read_cap_pct": "state",
     "d1.write_cap_pct": "state",
+    "cf.tokens.count": "state",
+    "cf.tokens.expiring_30d": "state",
+    "cf.tokens.no_expiry": "state",
+    "cf.tokens.all_accounts": "state",
+    "cf.tokens.new_7d": "state",
   },
   async poll(env) {
     const token = env.CLOUDFLARE_API_TOKEN;
@@ -317,6 +364,68 @@ export const cloudflare: Poller = {
       }
     }
 
-    return { entities: [...entities.values()], signals } satisfies PollerResult;
+    // —— API token inventory (#98) ——
+    // Read-only and optional: the listing needs a permission the scoped token
+    // may not have yet, and its absence must not cost the D1 watchers above.
+    const notes: string[] = [];
+    const sources = [
+      { label: "user", url: `${REST}/user/tokens`, scope: "API Tokens Read" },
+      { label: "account", url: `${REST}/accounts/${account}/tokens`, scope: "Account API Tokens Read" },
+    ];
+    const byId = new Map<string, ApiToken>();
+    let reached = 0;
+    for (const src of sources) {
+      const out = await listTokens(src.url, headers);
+      if ("error" in out) {
+        notes.push(`cloudflare: ${src.label} token list unavailable (${out.error}); grant ${src.scope} to inventory them`);
+        continue;
+      }
+      reached++;
+      if (out.truncated) notes.push(`cloudflare: ${src.label} token list capped at ${out.tokens.length} (page limit)`);
+      for (const t of out.tokens) byId.set(t.id, t);
+    }
+    if (reached > 0) {
+      const accountId = "cf:account";
+      if (!entities.has(accountId)) {
+        entities.set(accountId, {
+          id: accountId,
+          kind: "account",
+          category: "vendor_api",
+          name: "Cloudflare account",
+          sourceUrl: `https://dash.cloudflare.com/${account}/workers/d1`,
+        });
+      }
+      const tokensUrl = `https://dash.cloudflare.com/${account}/api-tokens`;
+      // Inactive tokens (disabled, expired) are no longer a surface; an expired
+      // one a deploy still uses shows up as a failing poller instead.
+      const live = [...byId.values()].filter(
+        (t) => t.status === "active" && (!t.expires_on || Date.parse(t.expires_on) > now * 1000),
+      );
+      const names = (list: ApiToken[]) =>
+        list.length === 0 ? undefined : list.slice(0, 5).map((t) => t.name).join(" · ") + (list.length > 5 ? ` · +${list.length - 5} more` : "");
+      const expiring = live.filter((t) => t.expires_on && Date.parse(t.expires_on) <= (now + TOKEN_EXPIRY_WINDOW) * 1000);
+      const urgent = expiring.some((t) => Date.parse(t.expires_on ?? "") <= (now + 7 * DAY) * 1000);
+      const noExpiry = live.filter((t) => !t.expires_on);
+      const wide = live.filter(spansAllAccounts);
+      const fresh = live.filter((t) => t.issued_on && Date.parse(t.issued_on) > (now - TOKEN_NEW_WINDOW) * 1000);
+      const emit = (metric: string, list: ApiToken[], severity: 0 | 1 | 2 | 3, valueText?: string) =>
+        signals.push({
+          entityId: accountId,
+          metric,
+          valueNum: list.length,
+          valueText: valueText ?? names(list),
+          severity: list.length > 0 ? severity : 0,
+          url: tokensUrl,
+          observedAt: now,
+          dedupeKey: dayBucket,
+        });
+      emit("cf.tokens.count", live, 0, `${live.length} active of ${byId.size} listed`);
+      emit("cf.tokens.expiring_30d", expiring, urgent ? 3 : 2);
+      emit("cf.tokens.no_expiry", noExpiry, 0);
+      emit("cf.tokens.all_accounts", wide, 1);
+      emit("cf.tokens.new_7d", fresh, 1);
+    }
+
+    return { entities: [...entities.values()], signals, notes } satisfies PollerResult;
   },
 };

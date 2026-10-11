@@ -193,7 +193,10 @@ a missing one is `unconfigured`.
 
 Every upstream credential is read-only by design; a rotation is the moment to
 check the scope has not grown. `CLOUDFLARE_API_TOKEN` needs Account
-Analytics:Read and D1:Read and nothing else.
+Analytics:Read and D1:Read, plus the read-only token-list permission
+(`API Tokens Read` for user-owned tokens, `Account API Tokens Read` for
+account-owned ones) for the `cf.tokens.*` inventory, and nothing else. Never
+an Edit or Write token permission.
 
 ## Verifying Cloudflare Access
 

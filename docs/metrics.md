@@ -104,6 +104,10 @@ Entity: `vendor_api:x`.
 Entities: `worker:{script}` per Worker script, `d1:{name}` per database, and
 `cf:account` for the account-wide allowance watchers. Needs
 `CLOUDFLARE_API_TOKEN` (Account Analytics:Read + D1:Read) and `CF_ACCOUNT_ID`.
+The `cf.tokens.*` inventory additionally needs read access to the token lists:
+user-owned tokens via `API Tokens Read`, account-owned via `Account API Tokens
+Read`. Either source may be unreachable; the poller says which in `notes` and
+keeps its D1 and Workers signals.
 
 | Metric | Semantics | Value | Severity | Dedupe |
 |---|---|---|---|---|
@@ -112,6 +116,11 @@ Entities: `worker:{script}` per Worker script, `d1:{name}` per database, and
 | `d1.size_bytes` | state | database size | 0 | day |
 | `d1.rows_read`, `d1.rows_written` | interval | per database per UTC day, from `d1AnalyticsAdaptiveGroups` (exact, unlike `wrangler d1 insights`) | 0 | `period_start` |
 | `d1.read_cap_pct`, `d1.write_cap_pct` | state | today's running account-wide total as a percent of the daily allowance (`D1_ROW_READS_PER_DAY` / `D1_ROW_WRITES_PER_DAY`, empty = Workers Free caps); text carries the per-database split | 3 at ≥ 100 %, 2 at ≥ 80 % ([ADR-007](adr/007-d1-row-write-budget.md)) | day |
+| `cf.tokens.count` | state | active API tokens (not disabled, not past `expires_on`); text says how many were listed | 0 | day |
+| `cf.tokens.expiring_30d` | state | active tokens expiring within 30 days; text names up to five | 3 when one expires within 7 days, 2 otherwise | day |
+| `cf.tokens.no_expiry` | state | active tokens with no `expires_on`; named in the text, informational | 0 | day |
+| `cf.tokens.all_accounts` | state | active tokens with an allow policy on all accounts (`com.cloudflare.api.account.*`) | 1 when any | day |
+| `cf.tokens.new_7d` | state | tokens issued in the last 7 days — the unexpected-new-token check; clears itself after a week | 1 when any | day |
 
 ## `manifests` poller — daily
 
