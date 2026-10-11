@@ -132,7 +132,7 @@ established.
 
 | Metric | Semantics | Value | Severity | Dedupe |
 |---|---|---|---|---|
-| `actions.minutes` | state | month-to-date runner minutes drawn from the allowance (Linux ×1, Windows ×2, macOS ×10), private repos only: public repos are fully discounted. Text carries the percent of `ACTIONS_MINUTES_PER_MONTH` (empty = 3000), the projected month-end pace, and the top repo | 3 at ≥ 100 % of the allowance or on a pace over it; 2 at ≥ 80 % or a pace ≥ 80 %; 1 at a pace ≥ 60 %; pace is judged only after 10 % of the month has elapsed | hour |
+| `actions.minutes` | state | month-to-date runner minutes drawn from the allowance (Linux ×1, Windows ×2, macOS ×10; the standard macOS runner is reported as `Actions macOS 3-core`), private repos only: public repos are fully discounted. Text carries the percent of `ACTIONS_MINUTES_PER_MONTH` (empty = 3000), the projected month-end pace, and the top repo | 3 at ≥ 100 % of the allowance or on a pace over it; 2 at ≥ 80 % or a pace ≥ 80 %; 1 at a pace ≥ 60 %; pace is judged only after 10 % of the month has elapsed | hour |
 
 Larger-runner minutes bill outright and never draw on the allowance; they are
 named in `notes`, not counted.

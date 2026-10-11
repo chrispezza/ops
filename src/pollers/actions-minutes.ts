@@ -23,10 +23,17 @@ const MIN_ELAPSED_FOR_PACE = 0.1;
 // Runner-minute multipliers against the included allowance. Larger runners are
 // billed per minute outright and never draw on it, so they are named in notes
 // instead of being folded into a number that would read as "allowance used".
+//
+// The standard macOS runner is reported as "Actions macOS 3-core", not plain
+// "Actions macOS": seen in production on 2026-10-11 at about ten times the
+// Linux per-minute price and fully discounted against the allowance. Read as
+// a larger runner it was left out, undercounting the month by 10 allowance
+// minutes per minute run.
 const MULTIPLIER: Record<string, number> = {
   "Actions Linux": 1,
   "Actions Windows": 2,
   "Actions macOS": 10,
+  "Actions macOS 3-core": 10,
 };
 
 interface UsageItem {

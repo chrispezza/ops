@@ -109,6 +109,14 @@ describe("actions_minutes poller (#91)", () => {
     expect(result.signals[0]?.url).toBe("https://github.com/settings/billing/summary");
   });
 
+  it("counts the standard macOS runner under the SKU name GitHub reports it by", async () => {
+    // production report, 2026-10: "Actions macOS 3-core" is the standard runner
+    stubUsage({ org: [item("web", 100), item("web", 21, "Actions macOS 3-core")] });
+    const result = await actionsMinutes.poll(testEnv, ctx([repo("web", true)]));
+    expect(result.signals[0]?.valueNum).toBe(310); // 100 + 21 x 10
+    expect(result.notes).toEqual([]);
+  });
+
   it("names larger-runner minutes instead of folding them into the allowance", async () => {
     stubUsage({ org: [item("web", 100), item("web", 40, "Actions Linux 4-core")] });
     const result = await actionsMinutes.poll(testEnv, ctx([repo("web", true)]));
