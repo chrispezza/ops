@@ -1,3 +1,4 @@
+import { actionsMinutes } from "./actions-minutes";
 import { anthropicUsage } from "./anthropic-usage";
 import { claudeCode } from "./claude-code";
 import { cloudflare } from "./cloudflare";
@@ -16,4 +17,4 @@ import { xUsage } from "./x-usage";
 // the invocation's subrequest budget and took spend, manifests and the D1
 // budget watchers dark for five days (#68). Its repo list comes from what
 // github recorded, which any position after github satisfies.
-export const POLLERS: Poller[] = [github, uptime, anthropicUsage, claudeCode, openaiCosts, xUsage, manifests, cloudflare, judge];
+export const POLLERS: Poller[] = [github, uptime, actionsMinutes, anthropicUsage, claudeCode, openaiCosts, xUsage, manifests, cloudflare, judge];

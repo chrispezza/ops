@@ -99,6 +99,23 @@ Entity: `vendor_api:x`.
 | `usage.monthly_posts` | state | posts used this month; text `n of cap` | 0 | day |
 | `usage.cap_pct` | state | percent of the monthly post cap used | 3 at ≥ 95 %, 2 at ≥ 80 % (near-cap is what breaks integrations) | day |
 
+## `actions_minutes` poller — hourly
+
+Entity: `account:{owner}` per entry of `GITHUB_OWNERS`, category `vendor_api`.
+One request per owner per poll, from the billing usage report. An org is read
+from `/organizations/{owner}/settings/billing/usage` (needs `read:org`), a
+personal account from `/users/{owner}/settings/billing/usage` (needs a classic
+token with the `user` scope; GitHub answers 404 without it). An owner it cannot
+read is a `notes` line, and its stale value is retracted
+([ADR-008](adr/008-retract-unobserved-state.md)).
+
+| Metric | Semantics | Value | Severity | Dedupe |
+|---|---|---|---|---|
+| `actions.minutes` | state | month-to-date runner minutes drawn from the allowance (Linux ×1, Windows ×2, macOS ×10), private repos only: public repos are fully discounted. Text carries the percent of `ACTIONS_MINUTES_PER_MONTH` (empty = 3000), the projected month-end pace, and the top repo | 3 at ≥ 100 % of the allowance or on a pace over it; 2 at ≥ 80 % or a pace ≥ 80 %; 1 at a pace ≥ 60 %; pace is judged only after 10 % of the month has elapsed | hour |
+
+Larger-runner minutes bill outright and never draw on the allowance; they are
+named in `notes`, not counted.
+
 ## `cloudflare` poller — daily
 
 Entities: `worker:{script}` per Worker script, `d1:{name}` per database, and
