@@ -232,9 +232,15 @@ misconfigured Access policy is not instantly catastrophic:
   zone-level policy. Leave either var empty to keep it dormant.
 
   `ACCESS_TEAM_DOMAIN` is the team name from `<team>.cloudflareaccess.com`.
-  `ACCESS_AUD` is the Application Audience tag under Zero Trust → Access →
-  Applications → your app → Overview. Confirm the keys resolve before you rely
-  on it:
+  `ACCESS_AUD` is the Application Audience tag under Zero Trust → Access
+  controls → Applications → your app → Overview. It is also the `kid` query
+  parameter of the login redirect an anonymous `curl -I` of the site gets, so
+  it can be read without the dashboard. One application's AUD covers every
+  hostname on that application; a separate application (preview URLs, say) has
+  its own AUD and is refused. Once these are set, blank both in `.dev.vars`
+  for local development (`.dev.vars.example` shows how); the test suite does
+  the same in `vitest.config.ts`. Confirm the keys resolve before you rely on
+  it:
 
   ```sh
   curl -s "https://<team>.cloudflareaccess.com/cdn-cgi/access/certs" | jq '.keys | length'

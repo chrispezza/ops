@@ -216,6 +216,29 @@ hostname, and the Worker verifies the assertion itself when
   (`DIGEST_TOKEN`). Access needs a bypass policy or a service token for
   exactly those two paths and no others.
 
+This deployment has the in-Worker check on since 2026-10-11 (#111). After any
+change to the Access applications, or to `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD`:
+
+- Anonymous, both hostnames: `curl -sI https://<host>/` answers 302 to the
+  team login. `curl -s https://<host>/digest/md` and
+  `curl -s -X POST https://<host>/ingest` answer 401 (the Worker's bearer
+  check, so they passed Access and were exempt from the assertion check).
+- The AUD in `wrangler.jsonc` equals the `kid` in that 302's `Location`.
+- Logged in, in a browser: the dashboard loads. If it instead shows
+  `access denied: <reason>`, the Worker is refusing a request Access admitted.
+  `aud mismatch` means `ACCESS_AUD` is not this application's tag; `iss
+  mismatch` means the team name is wrong; `no assertion` means the request
+  reached the Worker without passing through an Access application at all.
+- With the bearer tokens the machine routes answer 200, and the next
+  scheduled ingest from a consumer repo's CI lands.
+
+To back out, set both vars to `""` and deploy from `main`. The edge policy
+keeps working; only the Worker's own check is switched off.
+
+Preview URLs (`*-ops.<subdomain>.workers.dev`) are a separate Access
+application with a different AUD, so the Worker refuses them. That is
+deliberate: deploys come from `main` only.
+
 ### Monitoring a site that sits behind Access
 
 An anonymous request to a gated site is redirected to the team login, which

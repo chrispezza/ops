@@ -78,9 +78,17 @@
 		// Verify the Cloudflare Access assertion inside the Worker instead of trusting
 		// that the edge policy is present. Both must be set to enable it: the team name
 		// from <team>.cloudflareaccess.com, and the Access application's AUD tag
-		// (Zero Trust → Access → Applications → your app → Overview). Empty = dormant.
-		"ACCESS_TEAM_DOMAIN": "",
-		"ACCESS_AUD": ""
+		// (Zero Trust → Access controls → Applications → your app → Overview; it is
+		// also the `kid` in the login redirect an anonymous request gets). Empty =
+		// dormant. Not secrets: the AUD only names which application a token is for.
+		//
+		// This AUD is the "ops - Production" application, which covers both
+		// ops.pezza.dev and ops.chris-d8c.workers.dev. Preview URLs
+		// (*-ops.chris-d8c.workers.dev) are a separate application with a different
+		// AUD and are refused here on purpose: deploys come from main only.
+		// Local dev and the tests blank both (.dev.vars, vitest.config.ts).
+		"ACCESS_TEAM_DOMAIN": "pezza",
+		"ACCESS_AUD": "b9569461aa9d050603e33116060d92456abe08a291d91de0dfcca3375e5d91ab"
 	},
 	"observability": {
 		"enabled": true
