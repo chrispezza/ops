@@ -57,8 +57,13 @@ export function MapPage(props: {
   // present = the priority view: the worklist replaces the category sections
   priority?: { rows: TriageRow[]; filters: TriageFilters };
 }) {
-  const { rows, now, stale } = props;
-  if (rows.length === 0 && !props.q && !props.owner && !props.priority) return <SetupChecklist />;
+  const { now, stale } = props;
+  // Shelved repos (#90) leave the category sections for their own collapsed
+  // drawer so a parked project cannot read as work; the attention strip and
+  // the priority view are already quiet for them (only security is emitted).
+  const shelved = props.rows.filter((r) => r.view.shelved);
+  const rows = props.rows.filter((r) => !r.view.shelved);
+  if (props.rows.length === 0 && !props.q && !props.owner && !props.priority) return <SetupChecklist />;
   const sections = props.category ? SECTIONS.filter((s) => s.category === props.category) : SECTIONS;
   const maxScore = Math.max(0, ...rows.map((r) => r.score.total));
 
@@ -152,6 +157,14 @@ export function MapPage(props: {
           />
         )}
         {!props.category && other.length > 0 && <Section title="Other" rows={other} now={now} stale={stale} maxScore={maxScore} />}
+        {!props.category && shelved.length > 0 && (
+          <details class="section archived-section">
+            <summary>
+              Shelved <span class="rollup num">{shelved.length}</span>
+            </summary>
+            <Section title="Topic: shelved" rows={shelved} now={now} stale={stale} maxScore={maxScore} note="only security signals are tracked for these; remove the topic on GitHub to bring one back" />
+          </details>
+        )}
         {props.archived.length > 0 && (
           <details class="section archived-section">
             <summary>

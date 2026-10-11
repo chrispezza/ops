@@ -45,6 +45,12 @@ export const TOPIC_CATEGORY: Record<string, string> = {
   client: "client_project",
 };
 
+// A repo carrying this topic is parked on purpose (#90). Ops keeps it, keeps
+// its security signals (deps.vuln_count) and drops everything that would
+// prompt work: CI, issues, PRs, velocity, hygiene. The source of truth stays
+// on GitHub (ADR-001); removing the topic brings the repo back on the next poll.
+export const SHELVED_TOPIC = "shelved";
+
 // The one severity vocabulary. Three files had three lists ("ok" vs "info" for
 // level 0) — the dot's aria-label and the triage "why" labels must agree.
 export const SEVERITY_NAMES = ["ok", "low", "medium", "high", "critical"] as const;

@@ -187,6 +187,12 @@ off. Ops never writes labels, and severity labels are applied by the
 maintainer, not by agents: the judge's calibration (ADR-006) reads them as
 human ground truth.
 
+A repo with the `shelved` topic is parked on purpose: it moves to a collapsed
+"Shelved" group on the map and keeps only its Dependabot signal. CI, issues,
+PRs, velocity and hygiene stop being findings, so agents resolving ops findings
+stop spending Actions minutes on it. Remove the topic and it returns on the
+next poll. Archiving on GitHub is the heavier alternative (read-only).
+
 GitHub fine-grained PATs are scoped to a single resource owner. With multiple
 owners in `GITHUB_OWNERS`, set one secret per owner: `GITHUB_PAT_<OWNER>`
 (uppercased, non-alphanumerics become `_`, e.g. `GITHUB_PAT_ACME`). `GITHUB_PAT`
