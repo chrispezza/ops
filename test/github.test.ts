@@ -306,6 +306,39 @@ describe("github poller", () => {
     expect(sig("repo:clownware/unlabeled", "issues.cards")?.valueText).toBeUndefined();
   });
 
+  it("tiers a labelled issue that falls outside the idlest-first page (#80)", async () => {
+    const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const issue = (number: number, labels: string[], updated: number) => ({
+      number,
+      title: `issue ${number}`,
+      createdAt: daysAgo(100),
+      updatedAt: daysAgo(updated),
+      labels: { nodes: labels.map((name) => ({ name })) },
+    });
+    // a full idle page of unlabeled issues; the fresh P0 sorts last and is not on it
+    const page = Array.from({ length: 30 }, (_, i) => issue(i + 1, [], 200 - i));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/busy",
+            issues: { totalCount: 40, nodes: page },
+            labeledIssues: { totalCount: 1, nodes: [issue(99, ["P0"], 0)] },
+          }),
+        ]),
+      ),
+    );
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const sig = (metric: string) => result.signals.find((s) => s.entityId === "repo:clownware/busy" && s.metric === metric);
+
+    expect(sig("issues.flagged")).toMatchObject({ valueNum: 1, severity: 3 });
+    const cards = JSON.parse(sig("issues.cards")?.valueText ?? "[]") as { n: number; l: string }[];
+    expect(cards.map((c) => [c.n, c.l])).toEqual([[99, "P0"]]);
+    // the idle metric still reads the idlest page only
+    expect(sig("issues.idle_90d")?.valueNum).toBe(30);
+  });
+
   it("emits PR cards and weekly velocity, saying so when the velocity page is full", async () => {
     const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
     vi.stubGlobal(
