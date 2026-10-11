@@ -4,7 +4,7 @@ description: >-
   Model-produced signals live in the judge.* domain, are pinned at severity 0,
   and are visible on /findings only. They never feed the triage score, push
   alerts or the digest, and deleting them must change nothing else.
-lastUpdated: 2026-09-23T00:00:00.000Z
+lastUpdated: 2026-10-11T00:00:00.000Z
 tableOfContents: true
 pagefind: true
 ---
@@ -14,7 +14,8 @@ pagefind: true
 Accepted. Amended 2026-09-18 twice: rule 4 now grades against a reference chain
 (maintainer → frontier labelling pass → judge) instead of maintainer labels
 alone, and an issue is now judged once rather than re-judged nightly; see the
-two amendments below.
+two amendments below. Amended 2026-10-11: label provenance now reads the GitHub
+App that performed a label, not only the actor (see the last amendment).
 
 ## Context
 
@@ -263,3 +264,54 @@ The options are objects rather than strings, carrying what each tier is, what it
 is *not* for, and examples. Jev has no fine-tuning: no training endpoint, no
 few-shot parameter. The rubric is the only lever there is, and structured
 options are the documented way to pull it.
+
+## Amendment: label provenance is the App, not the actor (2026-10-11)
+
+Issue #84 reported that `judge.reference_agreement` had never had a denominator
+and offered two ways out: get the routine to label as the reference actor, or
+drop the reference link from the gate. Neither was needed, because the premise
+was wrong. The routine *was* labelling; the gate could not see it.
+
+The Claude GitHub App applies labels with the maintainer's own user-to-server
+token. GraphQL's `LabeledEvent` therefore reports the actor as the maintainer, a
+`User`, with no way to say an App was involved: the event has no performed-via
+field. The REST issue events do (`performed_via_github_app.slug`). Measured on
+2026-10-11 across the portfolio's open issues, 63 severity-label events: 29 had
+`performed_via_github_app.slug = "claude"`, 34 had none, and **all 63** carried
+the actor `chrispezza`. So:
+
+- `judge.reference_agreement` matched no event, because `JUDGE_REFERENCE_ACTORS`
+  names `claude` and no actor was ever called that.
+- Worse, `judge.tier_agreement_human` counted those 29 labels as the
+  maintainer's own. For about two weeks "the judge matches a human X% of the
+  time" was partly the judge matching another model, which is exactly what rule 4
+  exists to prevent. The 56% exact figure quoted in #84 is that contaminated
+  number and should not be relied on.
+
+What changed:
+
+1. For an issue whose severity or `triaged` label GraphQL attributes to a person,
+   the poller reads the REST events and records which App, if any, performed
+   each label. The newest event for a label wins.
+2. A label performed via an App is **never human**. It is a reference label when
+   the App's slug is in `JUDGE_REFERENCE_ACTORS` (so `claude` matches the actor
+   login `claude[bot]` and the App slug `claude` alike), and ground truth for
+   nothing otherwise.
+3. A lookup that fails, or falls past `PROVENANCE_CAP` (40 per repo), leaves the
+   issue's labels unattributed: counted as neither human nor reference, and
+   named in `notes`. Unknown origin is never defaulted to human.
+4. The lookup is skipped when `JUDGE_REFERENCE_ACTORS` is empty, so the
+   human-only rule is exactly as before.
+
+What did not change: the judge is still blind, severity is still 0, Ops still
+writes no label, and an automation driving the API with a person's PAT (no App)
+is still indistinguishable from that person; `JUDGE_CALIBRATION_EXCLUDE` remains
+the only handle on those.
+
+Cost: one REST request per labelled issue per daily run (about 60 portfolio
+wide today), drawn from the same run-wide budget as the model calls.
+
+Consequence for graduation: rule 4 is now satisfiable without amendment. The
+remaining work is the human half of the chain: `judge.reference_agreement` gets a
+denominator only as the maintainer overrides the routine's tiers with a severity
+label or accepts them with `triaged`, applied by hand rather than by the App.

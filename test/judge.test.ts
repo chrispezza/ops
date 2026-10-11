@@ -75,6 +75,11 @@ interface StubOpts {
   githubStatus?: number;
   // Every page claims another one behind it, so the read is never "complete".
   alwaysMore?: boolean;
+  // Issue number -> its REST label events, oldest first. `app` is the slug of
+  // the GitHub App that performed the label (GraphQL cannot say, #84). Default
+  // is no events: every label applied by a person directly.
+  events?: Record<number, { label: string; app?: string }[]>;
+  eventsStatus?: number;
 }
 
 // Captures every Jev request body so a test can assert what actually left the
@@ -108,6 +113,19 @@ function stubUpstreams(opts: StubOpts) {
             },
           },
         });
+      }
+      const eventsFor = /\/issues\/(\d+)\/events/.exec(url);
+      if (eventsFor) {
+        if (opts.eventsStatus) return new Response("nope", { status: opts.eventsStatus });
+        const list = opts.events?.[Number(eventsFor[1])] ?? [];
+        return Response.json(
+          list.map((e) => ({
+            event: "labeled",
+            label: { name: e.label },
+            actor: { login: "chrispezza" },
+            performed_via_github_app: e.app ? { slug: e.app } : null,
+          })),
+        );
       }
       if (url.includes("api.typesafe.ai")) {
         if (opts.jevStatus) return new Response("nope", { status: opts.jevStatus });
@@ -391,6 +409,70 @@ describe("judge poller", () => {
     expect(signalFor(result, "judge.tier_agreement")?.valueText).toBe(
       "0 of 1 exact · 1 within one tier · 0 human-labelled, 1 reference-labelled",
     );
+  });
+
+  describe("labels the Claude App applies with the maintainer's token (#84)", () => {
+    // GraphQL reports these as the maintainer: a User, no App. Only the REST
+    // event says performed_via_github_app.slug = "claude".
+    it("counts them as reference labels, not human ones", async () => {
+      stubUpstreams({
+        issues: [
+          issue(20, "routine-tiered", ["p1"]), // actor: the maintainer, per GraphQL
+          issue(21, "hand-tiered", ["p2"]),
+        ],
+        events: { 20: [{ label: "p1", app: "claude" }], 21: [{ label: "p2" }] },
+        tiers: { 20: { choice: "p1", confidence: 0.9 }, 21: { choice: "p2", confidence: 0.9 } },
+      });
+      const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+      expect(signalFor(result, "judge.tier_agreement")?.valueText).toBe(
+        "2 of 2 exact · 2 within one tier · 1 human-labelled, 1 reference-labelled",
+      );
+      // the human metric now grades against the hand label only
+      expect(signalFor(result, "judge.tier_agreement_human")?.valueText).toContain("1 of 1 exact");
+    });
+
+    it("grades the reference when a person overrides or accepts an App-applied tier", async () => {
+      stubUpstreams({
+        issues: [
+          issue(22, "overridden", ["p2", "p0"]),
+          issue(23, "accepted", ["p1", "triaged"]),
+        ],
+        events: {
+          22: [{ label: "p2", app: "claude" }, { label: "p0" }],
+          23: [{ label: "p1", app: "claude" }, { label: "triaged" }],
+        },
+      });
+      const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+      const reference = signalFor(result, "judge.reference_agreement");
+      expect(reference?.valueText).toBe("1 of 2 reviewed reference tiers stood · 1 overridden");
+      expect(reference?.valueNum).toBe(50);
+    });
+
+    it("treats a label an App re-applied after a person as the App's, and the reverse", async () => {
+      stubUpstreams({
+        issues: [issue(24, "ping-pong", ["p1"])],
+        events: { 24: [{ label: "p1" }, { label: "p1", app: "claude" }] },
+      });
+      const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+      expect(signalFor(result, "judge.tier_agreement_human")?.valueText).toBe("no human-labelled issues to compare against");
+    });
+
+    it("excludes a label from calibration, and says so, when its origin cannot be read", async () => {
+      stubUpstreams({ issues: [issue(25, "unknown origin", ["p1"])], eventsStatus: 500 });
+      const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo()]));
+
+      expect(signalFor(result, "judge.tier_agreement")?.valueText).toBe("no human- or reference-labelled issues to compare against");
+      expect(result.notes?.join(" ")).toContain("label origin unavailable for 1 issue(s) (HTTP 500)");
+    });
+
+    it("makes no REST calls when no reference actor is configured", async () => {
+      stubUpstreams({ issues: [issue(26, "plain", ["p1"])], events: { 26: [{ label: "p1", app: "claude" }] } });
+      await judge.poll({ ...env, ...KEY, JUDGE_REFERENCE_ACTORS: "" } as unknown as Env, ctxOf([repo()]));
+      const urls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
+      expect(urls.some((u) => u.includes("/events"))).toBe(false);
+    });
   });
 
   it("restores the human-only rule exactly when JUDGE_REFERENCE_ACTORS is empty", async () => {
