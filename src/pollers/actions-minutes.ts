@@ -7,9 +7,11 @@ import type { EntityUpsert, Poller, PollerResult, SignalInsert } from "./types";
 // the pace has to be visible before the cap, not after.
 //
 // Source: the billing usage report, one request per owner per poll. An org is
-// read from /organizations/{o}/settings/billing/usage (works with read:org); a
-// personal account from /users/{u}/settings/billing/usage, which needs the
-// classic `user` scope and answers 404 without it. An owner the token cannot
+// read from /organizations/{o}/settings/billing/usage and a personal account
+// from /users/{u}/settings/billing/usage. GitHub answers 404, not 403, to a
+// classic token without the scope; its X-Accepted-OAuth-Scopes header names
+// what it wants: `user` for the personal report, `admin:org` or `repo` for the
+// org one (read:org is not enough; measured 2026-10-11). An owner the token cannot
 // read is a note, not a failure: the other owner's numbers still land.
 const API = "https://api.github.com";
 const DEFAULT_ALLOWANCE = 3_000;
@@ -34,9 +36,10 @@ interface UsageItem {
   repositoryName?: string;
 }
 
-// The billing report needs scopes the repo-reading tokens should not carry: a
-// classic token with read:org owned by an org admin, or with `user` for a
-// personal account. In production the fine-grained GITHUB_PAT tokens answered
+// The billing report needs scopes the repo-reading tokens should not carry:
+// classic `user` for a personal account, and for an org classic `admin:org` or
+// `repo`, both of which can write. No read-only classic scope reads an org's
+// report, so an org owner is only covered by a token whose owner accepts that. In production the fine-grained GITHUB_PAT tokens answered
 // 403 for both owners. So billing has its own credentials, and the repo tokens
 // stay narrow: GITHUB_BILLING_PAT_<OWNER>, then GITHUB_BILLING_PAT, and only
 // then the repo token, for a deployment whose token happens to have the scope.
@@ -72,7 +75,9 @@ async function usageFor(
     const body = (await res.json()) as { usageItems?: UsageItem[] };
     return { items: body.usageItems ?? [], kind };
   }
-  return { error: `HTTP ${status}; a personal account needs a classic token with the user scope` };
+  // both paths said "not found": the owner does not exist, or (far more
+  // likely) the token lacks the scope, which GitHub also reports as 404
+  return { error: `HTTP ${status}, which GitHub also answers when the token lacks the scope` };
 }
 
 export const actionsMinutes: Poller = {
@@ -132,7 +137,7 @@ export const actionsMinutes: Poller = {
       const usage = await usageFor(owner, year, month, headers);
       if ("error" in usage) {
         notes.push(
-          `actions_minutes: ${owner} billing usage unavailable (${usage.error}); set ${billingKey(owner)} to a classic token with read:org (an org, owned by an org admin) or user (a personal account)`,
+          `actions_minutes: ${owner} billing usage unavailable (${usage.error}); set ${billingKey(owner)}: a personal account needs classic scope user; an org needs admin:org or repo, which are not read-only (see docs/metrics.md)`,
         );
         continue;
       }

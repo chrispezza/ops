@@ -193,9 +193,11 @@ a missing one is `unconfigured`.
 
 The Actions-minutes poller reads billing usage with its own token,
 `GITHUB_BILLING_PAT_<OWNER>` (same naming rule), so the repo-reading tokens
-never need billing scope. It must be a classic token: `read:org` with an owner
-who is an organization admin, or `user` for a personal account. A refused
-token shows on `/health` as `billing usage unavailable (HTTP 403)` with the
+never need billing scope. A personal account needs a classic token with `user`.
+An organization needs `admin:org` or `repo` (`read:org` is refused), and both
+can write: decide deliberately before granting either (`docs/metrics.md`). A refused
+token shows on `/health` as `billing usage unavailable` (HTTP 403 from a fine-grained
+token, 404 from a classic one without the scope) with the
 name of the secret to set; the poller keeps running for the other owners.
 
 Every upstream credential is read-only by design; a rotation is the moment to
