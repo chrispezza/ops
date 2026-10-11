@@ -117,6 +117,13 @@ token with the `user` scope; GitHub answers 404 without it). An owner it cannot
 read is a `notes` line, and its stale value is retracted
 ([ADR-008](adr/008-retract-unobserved-state.md)).
 
+The token is looked up as `GITHUB_BILLING_PAT_<OWNER>`, then
+`GITHUB_BILLING_PAT`, then the repo token (`GITHUB_PAT_<OWNER>` /
+`GITHUB_PAT`). Billing has its own secrets because the report needs scopes the
+repo-reading tokens should not carry, and a fine-grained token answers 403:
+use a classic token with `read:org` whose owner is an organization admin, or
+with `user` for a personal account.
+
 | Metric | Semantics | Value | Severity | Dedupe |
 |---|---|---|---|---|
 | `actions.minutes` | state | month-to-date runner minutes drawn from the allowance (Linux ×1, Windows ×2, macOS ×10), private repos only: public repos are fully discounted. Text carries the percent of `ACTIONS_MINUTES_PER_MONTH` (empty = 3000), the projected month-end pace, and the top repo | 3 at ≥ 100 % of the allowance or on a pace over it; 2 at ≥ 80 % or a pace ≥ 80 %; 1 at a pace ≥ 60 %; pace is judged only after 10 % of the month has elapsed | hour |

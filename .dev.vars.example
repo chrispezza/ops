@@ -15,6 +15,11 @@ DIGEST_TOKEN=dev-token
 # resource owner as GITHUB_PAT_<OWNER> when GITHUB_OWNERS lists several)
 GITHUB_PAT=
 
+# actions_minutes poller — billing usage needs a classic token (read:org as an
+# org admin, or user for a personal account). One per owner as
+# GITHUB_BILLING_PAT_<OWNER>; falls back to GITHUB_PAT when unset.
+GITHUB_BILLING_PAT=
+
 # anthropic_usage, claude_code pollers
 ANTHROPIC_ADMIN_KEY=
 

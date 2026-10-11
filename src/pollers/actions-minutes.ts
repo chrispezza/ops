@@ -34,6 +34,18 @@ interface UsageItem {
   repositoryName?: string;
 }
 
+// The billing report needs scopes the repo-reading tokens should not carry: a
+// classic token with read:org owned by an org admin, or with `user` for a
+// personal account. In production the fine-grained GITHUB_PAT tokens answered
+// 403 for both owners. So billing has its own credentials, and the repo tokens
+// stay narrow: GITHUB_BILLING_PAT_<OWNER>, then GITHUB_BILLING_PAT, and only
+// then the repo token, for a deployment whose token happens to have the scope.
+const billingKey = (owner: string): string => `GITHUB_BILLING_PAT_${owner.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+export function billingTokenForOwner(env: Env, owner: string): string | undefined {
+  const vars = env as unknown as Record<string, string | undefined>;
+  return vars[billingKey(owner)] || vars.GITHUB_BILLING_PAT || tokenForOwner(env, owner);
+}
+
 const allowanceFrom = (raw: string | undefined): number => {
   const n = Number(raw);
   return raw && Number.isFinite(n) && n > 0 ? n : DEFAULT_ALLOWANCE;
@@ -106,9 +118,9 @@ export const actionsMinutes: Poller = {
         sourceUrl: `https://github.com/settings/billing/summary`,
       });
 
-      const token = tokenForOwner(env, owner);
+      const token = billingTokenForOwner(env, owner);
       if (!token) {
-        notes.push(`actions_minutes: no token for ${owner}; set GITHUB_PAT or GITHUB_PAT_${owner.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`);
+        notes.push(`actions_minutes: no token for ${owner}; set ${billingKey(owner)}`);
         continue;
       }
       const headers = {
@@ -119,7 +131,9 @@ export const actionsMinutes: Poller = {
       };
       const usage = await usageFor(owner, year, month, headers);
       if ("error" in usage) {
-        notes.push(`actions_minutes: ${owner} billing usage unavailable (${usage.error})`);
+        notes.push(
+          `actions_minutes: ${owner} billing usage unavailable (${usage.error}); set ${billingKey(owner)} to a classic token with read:org (an org, owned by an org admin) or user (a personal account)`,
+        );
         continue;
       }
 
