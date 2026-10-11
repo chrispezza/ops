@@ -39,7 +39,9 @@ interface D1Row {
 
 const DEFAULT_DBS = [{ uuid: "uuid-1", name: "ops", file_size: 12_582_912 }];
 
-function stubCf(rows: Row[], d1Rows: D1Row[] = [], databases = DEFAULT_DBS) {
+// token lists by source; a number is the HTTP status that source answers with
+type TokenList = Record<string, unknown>[] | number;
+function stubCf(rows: Row[], d1Rows: D1Row[] = [], databases = DEFAULT_DBS, tokens: { user?: TokenList; account?: TokenList } = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -75,6 +77,12 @@ function stubCf(rows: Row[], d1Rows: D1Row[] = [], databases = DEFAULT_DBS) {
             },
           },
         });
+      }
+      if (url.includes("/tokens")) {
+        const source = url.includes("/user/tokens") ? tokens.user : tokens.account;
+        if (typeof source === "number") return new Response("{}", { status: source });
+        if (source === undefined) return new Response("{}", { status: 403 });
+        return Response.json({ result: source, result_info: { page: 1, total_pages: 1 } });
       }
       if (url.includes("/d1/database")) {
         return Response.json({ result: databases });
@@ -248,6 +256,65 @@ describe("cloudflare poller", () => {
     await expect(cloudflare.poll({ ...cfEnv, CLOUDFLARE_API_TOKEN: undefined } as unknown as Env, noCtx)).rejects.toThrow(
       /^unconfigured/,
     );
+  });
+});
+
+describe("cloudflare token inventory (#98)", () => {
+  const iso = (offsetDays: number) => new Date(Date.now() + offsetDays * 86_400_000).toISOString();
+  const token = (name: string, o: Record<string, unknown> = {}) => ({
+    id: `id-${name}`,
+    name,
+    status: "active",
+    issued_on: iso(-200),
+    expires_on: null,
+    policies: [{ effect: "allow", resources: { "com.cloudflare.api.account.acct123": "*" } }],
+    ...o,
+  });
+  const sig = (result: { signals: { entityId: string; metric: string }[] }, metric: string) =>
+    result.signals.find((s) => s.entityId === "cf:account" && s.metric === metric) as
+      | { valueNum?: number; valueText?: string; severity?: number }
+      | undefined;
+
+  it("emits the five account signals from user- and account-owned lists", async () => {
+    stubCf([], [], DEFAULT_DBS, {
+      user: [
+        token("ops poller", { policies: [{ effect: "allow", resources: { "com.cloudflare.api.account.*": "*" } }], expires_on: iso(3) }),
+        token("old ci", { expires_on: iso(20) }),
+        token("agent", { issued_on: iso(-1) }),
+        token("lapsed", { expires_on: iso(-5) }), // past expiry: not a live surface
+        token("off", { status: "disabled" }),
+      ],
+      account: [token("builds", { expires_on: iso(200) })],
+    });
+    const result = await cloudflare.poll(cfEnv, noCtx);
+
+    expect(sig(result, "cf.tokens.count")).toMatchObject({ valueNum: 4, valueText: "4 active of 6 listed" });
+    expect(sig(result, "cf.tokens.expiring_30d")).toMatchObject({ valueNum: 2, severity: 3 }); // one inside 7d
+    expect(sig(result, "cf.tokens.expiring_30d")?.valueText).toContain("ops poller");
+    expect(sig(result, "cf.tokens.no_expiry")).toMatchObject({ valueNum: 1, valueText: "agent", severity: 0 });
+    expect(sig(result, "cf.tokens.all_accounts")).toMatchObject({ valueNum: 1, valueText: "ops poller", severity: 1 });
+    expect(sig(result, "cf.tokens.new_7d")).toMatchObject({ valueNum: 1, valueText: "agent", severity: 1 });
+    expect(result.entities.some((e) => e.id === "cf:account")).toBe(true);
+    expect(result.notes ?? []).toEqual([]);
+  });
+
+  it("keeps the D1 signals and says what to grant when neither list is readable", async () => {
+    stubCf([], [{ date: day(1), rowsRead: 1_000, rowsWritten: 10 }], DEFAULT_DBS, { user: 403, account: 403 });
+    const result = await cloudflare.poll(cfEnv, noCtx);
+    expect(result.signals.some((s) => s.metric.startsWith("cf.tokens."))).toBe(false);
+    expect(result.signals.some((s) => s.metric === "d1.read_cap_pct")).toBe(true);
+    expect(result.notes).toEqual([
+      "cloudflare: user token list unavailable (HTTP 403); grant API Tokens Read to inventory them",
+      "cloudflare: account token list unavailable (HTTP 403); grant Account API Tokens Read to inventory them",
+    ]);
+  });
+
+  it("reports zero rather than going silent when the live token set is clean", async () => {
+    stubCf([], [], DEFAULT_DBS, { account: [token("builds", { expires_on: iso(300) })], user: 401 });
+    const result = await cloudflare.poll(cfEnv, noCtx);
+    expect(sig(result, "cf.tokens.expiring_30d")).toMatchObject({ valueNum: 0, severity: 0 });
+    expect(sig(result, "cf.tokens.all_accounts")).toMatchObject({ valueNum: 0, severity: 0 });
+    expect(result.notes).toEqual(["cloudflare: user token list unavailable (HTTP 401); grant API Tokens Read to inventory them"]);
   });
 });
 
