@@ -38,6 +38,12 @@ export interface PollerResult {
   // off the banner, visible on /health). No silent caps: a poller that
   // truncates its own work says so here instead of letting the gap be inferred.
   notes?: string[];
+  // Entity ids this poller has deliberately stopped covering (ADR-008,
+  // amendment 2026-10-11). The runner drops the latest pointer of every state
+  // metric this poller wrote for them. For a poller that cannot promise
+  // `retractUnobserved` because it covers only part of its entities per run,
+  // but does know that specific ones are out of scope for good.
+  retract?: string[];
 }
 
 export type Schedule = "hourly" | "daily";

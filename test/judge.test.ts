@@ -475,6 +475,21 @@ describe("judge poller", () => {
     });
   });
 
+  it("does not read or judge a shelved repo, and names it for retraction (#119)", async () => {
+    stubUpstreams({ issues: [issue(30, "untiered thing")] });
+    const parked = repo({ id: "repo:chrispezza/parked", name: "parked", metadata: { private: false, shelved: true } });
+    const result = await judge.poll({ ...env, ...KEY } as Env, ctxOf([repo(), parked]));
+
+    expect(result.retract).toEqual(["repo:chrispezza/parked"]);
+    expect(result.signals.some((s) => s.entityId === "repo:chrispezza/parked")).toBe(false);
+    expect(result.signals.some((s) => s.entityId === "repo:chrispezza/ops")).toBe(true);
+    expect(result.notes?.join(" ")).toContain("skipped 1 shelved repo(s)");
+    // one GraphQL read and one judgment, both for the live repo only
+    const graphql = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter((c) => String(c[0]).includes("/graphql"));
+    expect(graphql).toHaveLength(1);
+    expect(jevRequests).toHaveLength(1);
+  });
+
   it("restores the human-only rule exactly when JUDGE_REFERENCE_ACTORS is empty", async () => {
     stubUpstreams({
       issues: [issue(16, "data loss on sync", ["p0"], "detail", CLAUDE_APP)],

@@ -77,8 +77,10 @@ from stored signals on each pass in `src/core/derive.ts` and
 
 `src/pollers/types.ts` is the contract; `src/core/runner.ts` enforces it.
 
-- Pollers never touch D1. Return `{ entities, signals, notes? }`; the runner
-  stores, dedupes, isolates failures and records health.
+- Pollers never touch D1. Return `{ entities, signals, notes?, retract? }`; the
+  runner stores, dedupes, isolates failures and records health. `retract` names
+  entities the poller has stopped covering for good, so their state metrics
+  stop reading as current (ADR-008); never use it for "not reached this run".
 - Read credentials from `env`. If one is absent, throw
   `new Error("unconfigured: set the X secret to enable this poller")`. The
   runner recognises the `unconfigured:` prefix and records a calm severity-1

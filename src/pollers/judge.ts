@@ -515,7 +515,13 @@ export const judge: Poller = {
     const notes: string[] = [];
 
     const tracked = await ctx.listEntities("repo");
-    const all = tracked.filter((e) => !e.archived);
+    // A shelved repo is parked on purpose (#90): no proposals, no calibration,
+    // no model calls. Its existing rows are handed to the runner to retract,
+    // or they would sit on /findings for good (#119).
+    const shelved = tracked.filter((e) => !e.archived && e.metadata?.shelved === true);
+    const retract = shelved.map((e) => e.id);
+    const all = tracked.filter((e) => !e.archived && e.metadata?.shelved !== true);
+    if (shelved.length > 0) notes.push(`skipped ${shelved.length} shelved repo(s)`);
     const priorCursors = readCursors(await ctx.listEntities("poller"));
     // Carried forward by default. A repo skipped this run — no PAT, GitHub
     // unreachable, past MAX_REPOS, budget spent — must not forget what it has
@@ -536,7 +542,7 @@ export const judge: Poller = {
     }
     if (repos.length === 0) {
       notes.push("no repos to judge yet — the github poller populates the list");
-      return { entities: [], signals, notes };
+      return { entities: [], signals, notes, retract };
     }
 
     let lowConfidence = 0;
@@ -908,6 +914,6 @@ export const judge: Poller = {
       name: "judge",
       metadata: { cursors },
     };
-    return { entities: [self], signals, ...(notes.length ? { notes } : {}) } satisfies PollerResult;
+    return { entities: [self], signals, ...(notes.length ? { notes } : {}), ...(retract.length ? { retract } : {}) } satisfies PollerResult;
   },
 };
