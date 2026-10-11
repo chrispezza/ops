@@ -339,6 +339,35 @@ describe("github poller", () => {
     expect(sig("issues.idle_90d")?.valueNum).toBe(30);
   });
 
+  it("keeps only the security signal for a repo with the shelved topic (#90)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          repoNode({
+            nameWithOwner: "clownware/parked",
+            repositoryTopics: { nodes: [{ topic: { name: "shelved" } }, { topic: { name: "web-app" } }] },
+            issues: {
+              totalCount: 1,
+              nodes: [{ number: 1, title: "p0 thing", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-02T00:00:00Z", labels: { nodes: [{ name: "P0" }] } }],
+            },
+            vulnerabilityAlerts: { totalCount: 1, nodes: [{ securityVulnerability: { severity: "HIGH" } }] },
+            defaultBranchRef: {
+              name: "main",
+              target: { oid: "abc", committedDate: "2026-09-27T00:00:00Z", statusCheckRollup: { state: "FAILURE" } },
+            },
+          }),
+        ]),
+      ),
+    );
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const metrics = result.signals.filter((s) => s.entityId === "repo:clownware/parked").map((s) => s.metric);
+    expect(metrics).toEqual(["deps.vuln_count"]);
+    const entity = result.entities.find((e) => e.id === "repo:clownware/parked");
+    expect(entity?.metadata).toMatchObject({ shelved: true });
+    expect(entity?.category).toBe("web_app");
+  });
+
   it("emits PR cards and weekly velocity, saying so when the velocity page is full", async () => {
     const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
     vi.stubGlobal(

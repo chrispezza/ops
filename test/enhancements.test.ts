@@ -81,6 +81,36 @@ describe("hygiene.inactive triage path", () => {
   });
 });
 
+describe("shelved repos (#90)", () => {
+  it("resolves inactivity, uncategorized and expected-metric flags for a shelved repo", async () => {
+    await upsertEntities(
+      env.DB,
+      [{ id: "repo:a/parked", kind: "repo", category: "web_app", name: "parked", metadata: { shelved: true } }],
+      NOW,
+    );
+    const pushed = NOW - 200 * DAY;
+    await insertSignals(env.DB, "github", [
+      { entityId: "repo:a/parked", metric: "repo.pushed_at", valueNum: pushed, observedAt: pushed, dedupeKey: String(pushed) },
+    ]);
+    // flags raised before the repo was shelved
+    await insertSignals(env.DB, "core", [
+      { entityId: "repo:a/parked", metric: "hygiene.missing.ci.status", valueText: "ci.status", severity: 1, observedAt: NOW - DAY, dedupeKey: "ci.status" },
+      { entityId: "repo:a/parked", metric: "hygiene.inactive", valueNum: 199, severity: 2, observedAt: NOW - DAY, dedupeKey: "activity" },
+    ]);
+
+    await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW);
+    const latest = await latestSignals(env.DB, "repo:a/parked");
+    const sev = (m: string) => latest.find((s) => s.metric === m)?.severity;
+    expect(sev("hygiene.inactive")).toBe(0);
+    expect(sev("hygiene.missing.ci.status")).toBe(0);
+    // an untagged shelved repo owes no topic either
+    await upsertEntities(env.DB, [{ id: "repo:a/bare", kind: "repo", name: "bare", metadata: { shelved: true } }], NOW);
+    await emitHygieneSignals(env.DB, EXPECTED_METRICS, NOW + 60);
+    const bare = (await latestSignals(env.DB, "repo:a/bare")).find((s) => s.metric === "hygiene.uncategorized");
+    expect(bare?.severity).toBe(0);
+  });
+});
+
 describe("ntfy notifications", () => {
   const seedAlert = async (severity: 0 | 3 | 4 = 3) => {
     await upsertEntities(env.DB, [{ id: "repo:a/site", kind: "repo", category: "static_site", name: "site" }], NOW);

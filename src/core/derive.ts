@@ -175,7 +175,7 @@ export async function detectSpendAnomalies(db: D1Database, now: number): Promise
 
 // GLOB, not LIKE: LIKE is case-insensitive and cannot seek idx_signals_metric
 // (BINARY collation), which made this a full scan of signals every pass (#60).
-export const HYGIENE_RECONCILE_SQL = `SELECT s.entity_id, s.metric, s.dedupe_key, e.category FROM signals s
+export const HYGIENE_RECONCILE_SQL = `SELECT s.entity_id, s.metric, s.dedupe_key, e.category, json_extract(e.metadata, '$.shelved') AS shelved FROM signals s
   JOIN entities e ON e.id = s.entity_id
   WHERE (s.metric GLOB 'hygiene.missing.*' OR s.metric = 'hygiene.missing_metric') AND s.severity > 0`;
 
@@ -197,7 +197,8 @@ export async function emitHygieneSignals(
   const placeholders = categories.map((_, i) => `?${i + 1}`).join(", ");
   const entities = await db
     .prepare(
-      `SELECT id, category FROM entities WHERE archived = 0 AND kind = 'repo' AND category IN (${placeholders})`,
+      `SELECT id, category FROM entities WHERE archived = 0 AND kind = 'repo' AND category IN (${placeholders})
+         AND json_extract(metadata, '$.shelved') IS NOT 1`,
     )
     .bind(...categories)
     .all<{ id: string; category: string }>();
@@ -230,10 +231,10 @@ export async function emitHygieneSignals(
   // Matches the legacy packed name too, sweeping old deployments clean.
   const existing = await db
     .prepare(HYGIENE_RECONCILE_SQL)
-    .all<{ entity_id: string; metric: string; dedupe_key: string; category: string | null }>();
+    .all<{ entity_id: string; metric: string; dedupe_key: string; category: string | null; shelved: number | null }>();
   for (const row of existing.results) {
     const isLegacy = row.metric === "hygiene.missing_metric";
-    const stillExpected = !isLegacy && (expected[row.category ?? ""] ?? []).includes(row.dedupe_key);
+    const stillExpected = !isLegacy && row.shelved !== 1 && (expected[row.category ?? ""] ?? []).includes(row.dedupe_key);
     if (!stillExpected) {
       signals.push({
         entityId: row.entity_id,
@@ -250,15 +251,15 @@ export async function emitHygieneSignals(
   // /findings, not just visible as the map's warning bucket.
   const knownCategories = new Set(categories);
   const repos = await db
-    .prepare("SELECT id, category FROM entities WHERE archived = 0 AND kind = 'repo'")
-    .all<{ id: string; category: string | null }>();
+    .prepare("SELECT id, category, json_extract(metadata, '$.shelved') AS shelved FROM entities WHERE archived = 0 AND kind = 'repo'")
+    .all<{ id: string; category: string | null; shelved: number | null }>();
   for (const repo of repos.results) {
     const categorized = repo.category != null && knownCategories.has(repo.category);
     signals.push({
       entityId: repo.id,
       metric: "hygiene.uncategorized",
       valueText: repo.category ?? "no topic",
-      severity: categorized ? 0 : 1,
+      severity: categorized || repo.shelved === 1 ? 0 : 1, // a parked repo owes no topic (#90)
       observedAt: now,
       dedupeKey: "category",
     });
@@ -270,20 +271,21 @@ export async function emitHygieneSignals(
   // last_seen_at (which every hourly poll bumps).
   const pushed = await db
     .prepare(
-      `SELECT s.entity_id, MAX(s.value_num) AS pushed_at FROM signals s
+      `SELECT s.entity_id, MAX(s.value_num) AS pushed_at, json_extract(e.metadata, '$.shelved') AS shelved FROM signals s
        JOIN entities e ON e.id = s.entity_id
        WHERE s.metric = 'repo.pushed_at' AND e.archived = 0
        GROUP BY s.entity_id`,
     )
-    .all<{ entity_id: string; pushed_at: number }>();
+    .all<{ entity_id: string; pushed_at: number; shelved: number | null }>();
   for (const row of pushed.results) {
     const days = Math.floor((now - row.pushed_at) / 86_400);
     signals.push({
       entityId: row.entity_id,
       metric: "hygiene.inactive",
       valueNum: days,
-      valueText: days >= 90 ? `no pushes for ${days}d` : "active",
-      severity: days >= 180 ? 2 : days >= 90 ? 1 : 0,
+      valueText: row.shelved === 1 ? "shelved" : days >= 90 ? `no pushes for ${days}d` : "active",
+      // shelved is parked on purpose (#90); a 0 row resolves any earlier flag
+      severity: row.shelved === 1 ? 0 : days >= 180 ? 2 : days >= 90 ? 1 : 0,
       observedAt: now,
       dedupeKey: "activity",
     });

@@ -1,4 +1,4 @@
-import { TOPIC_CATEGORY } from "../config";
+import { SHELVED_TOPIC, TOPIC_CATEGORY } from "../config";
 import type { EntityUpsert, Poller, PollerResult, SignalInsert } from "./types";
 
 // Fine-grained PATs are scoped to one resource owner. GITHUB_PAT_<OWNER>
@@ -396,6 +396,7 @@ export const github: Poller = {
         const id = `repo:${repo.nameWithOwner}`;
         const topics = repo.repositoryTopics.nodes.map((n) => n.topic.name);
         const category = topics.map((t) => TOPIC_CATEGORY[t]).find(Boolean);
+        const shelved = topics.includes(SHELVED_TOPIC);
 
         entities.push({
           id,
@@ -409,13 +410,17 @@ export const github: Poller = {
             language: repo.primaryLanguage?.name,
             private: repo.isPrivate,
             topics,
+            shelved: shelved || undefined,
             homepage: repo.homepageUrl || undefined, // uptime poller's target list
           },
         });
 
         const head = repo.defaultBranchRef?.target;
         const state = head ? ciState(head) : null;
-        if (head && state) {
+        // A shelved repo emits only its security signal (below). The metrics it
+        // stops emitting are retracted by the runner (ADR-008), so findings
+        // clear on the next poll without a write per metric (#90).
+        if (head && state && !shelved) {
           signals.push({
             entityId: id,
             metric: "ci.status",
@@ -433,7 +438,7 @@ export const github: Poller = {
         // DEPLOYED_SHA is stamped by the deploy; without it there is nothing
         // to compare, so nothing is claimed.
         const deployed = env.DEPLOYED_SHA;
-        if (head && deployed && repo.nameWithOwner === env.SELF_REPO) {
+        if (head && deployed && repo.nameWithOwner === env.SELF_REPO && !shelved) {
           const behind = head.oid !== deployed;
           // A deploy takes a minute or two after the merge, and one waiting
           // on a hand-applied migration takes as long as the human does.
@@ -483,6 +488,9 @@ export const github: Poller = {
           observedAt: now,
           dedupeKey: hourBucket,
         });
+        // Shelved (#90): security stays visible, nothing else prompts work.
+        if (shelved) continue;
+
         signals.push({
           entityId: id,
           metric: "issues.open",

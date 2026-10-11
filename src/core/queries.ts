@@ -40,6 +40,7 @@ export interface EntityView {
   owner: string | null;
   source_url: string | null;
   last_seen_at: number;
+  shelved?: boolean; // metadata.shelved, set by the github poller from the topic (#90)
   latest: Record<string, SignalRow>;
   maxSeverity: number;
 }
@@ -49,6 +50,7 @@ export async function entitiesWithLatest(db: D1Database): Promise<EntityView[]> 
   const res = await db
     .prepare(
       `SELECT e.id, e.kind, e.category, e.name, e.owner, e.source_url, e.last_seen_at,
+              json_extract(e.metadata, '$.shelved') AS shelved,
               s.id AS sig_id, s.source, s.metric, s.value_num, s.value_text, s.severity,
               s.url, s.observed_at, s.period_start, s.period_end, s.dedupe_key
        FROM entities e
@@ -72,6 +74,7 @@ export async function entitiesWithLatest(db: D1Database): Promise<EntityView[]> 
         owner: row.owner as string | null,
         source_url: row.source_url as string | null,
         last_seen_at: row.last_seen_at as number,
+        shelved: row.shelved === 1,
         latest: {},
         maxSeverity: 0,
       };
