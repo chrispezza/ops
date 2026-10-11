@@ -73,9 +73,17 @@ Entity: the `repo:` entities whose GitHub *Website* field is set (read back
 through `listEntities`). Capped at `MAX_TARGETS` (25) per run; the cap is
 reported in `notes` and shows on `/health`.
 
+Redirects are walked by hand (up to 5 hops) so that a Cloudflare Access login
+page, which answers 200, is never mistaken for the site. For a host listed in
+`UPTIME_ACCESS_HOSTS` the poller sends its Access service token
+(`UPTIME_ACCESS_CLIENT_ID` / `UPTIME_ACCESS_CLIENT_SECRET`) and checks the real
+page; the token goes to those hosts only, over https, and is not carried across
+a redirect to another host. What `up` proves is that the homepage answered 2xx
+to an authorised request. It does not read the body.
+
 | Metric | Semantics | Value | Severity | Dedupe |
 |---|---|---|---|---|
-| `site.up` | state | 1 / 0; text `up` / `down` | 3 when down | hour |
+| `site.up` | state | 1 / 0 with text `up` / `down` when the site itself answered. No number when the check never reached it: a redirect to a Cloudflare Access login is `behind Cloudflare Access; not checked`, or `Cloudflare Access refused the service token` when a token was sent | 3 when down; 2 when the service token is refused (the monitor is broken); 1 when gated and unchecked | hour |
 | `site.response_ms` | state | time to first response; only emitted when up | 0 | hour |
 
 ## Vendor spend pollers — daily

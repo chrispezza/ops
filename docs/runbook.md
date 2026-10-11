@@ -216,6 +216,30 @@ hostname, and the Worker verifies the assertion itself when
   (`DIGEST_TOKEN`). Access needs a bypass policy or a service token for
   exactly those two paths and no others.
 
+### Monitoring a site that sits behind Access
+
+An anonymous request to a gated site is redirected to the team login, which
+answers 200. The uptime poller recognises that redirect and reports
+`behind Cloudflare Access; not checked` (severity 1) instead of `up`. To have
+it check the real page:
+
+1. Zero Trust → Access controls → Service credentials → create a service
+   token. Store the client ID and client secret in 1Password.
+2. On the gated site's Access application, add a policy with action
+   **Service Auth** that includes that service token. An Allow policy does not
+   admit a service token.
+3. Set both secrets through `op`, never by pasting:
+   `op read "op://<vault>/<item>/client_id" | wrangler secret put UPTIME_ACCESS_CLIENT_ID`
+   and the same for `client_secret` → `UPTIME_ACCESS_CLIENT_SECRET`.
+4. Add the site's exact hostname to `UPTIME_ACCESS_HOSTS` in `wrangler.jsonc`
+   and deploy. The token is sent to listed hosts only.
+5. Set the repo's Website field on GitHub if it is not set; that is what
+   enrolls a site in uptime monitoring at all.
+
+`Cloudflare Access refused the service token` (severity 2) means the token
+expired (service tokens default to one year) or the Service Auth policy is
+gone. Rotate it with steps 1 to 3; the old token can be revoked afterwards.
+
 ## Local development
 
 ```sh

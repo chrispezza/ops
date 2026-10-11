@@ -33,3 +33,9 @@ TYPESAFE_API_KEY=
 # push notifications (self-hosted ntfy topic URL, optional auth token)
 NTFY_URL=
 NTFY_TOKEN=
+
+# uptime poller — Cloudflare Access service token, sent only to the hosts in
+# UPTIME_ACCESS_HOSTS (wrangler.jsonc). Leave empty unless a monitored site
+# sits behind Access.
+UPTIME_ACCESS_CLIENT_ID=
+UPTIME_ACCESS_CLIENT_SECRET=

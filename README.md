@@ -99,7 +99,7 @@ as separate truth.
 | Poller | Schedule | Needs | Reports |
 |---|---|---|---|
 | `github` | hourly | `GITHUB_OWNERS`, `GITHUB_PAT` | CI status, duration and fail streak; Dependabot vulns; open PRs (human vs Dependabot, major bumps); issue backlog shape (new, idle, oldest, labeled); issue and PR cards plus 7-day velocity for the board; last push, releases, branches; a documentation health score (`docs.score`) |
-| `uptime` | hourly | — (uses each repo's GitHub Website field) | `site.up`, `site.response_ms` — capped at 25 sites per run, and says so on `/health` when it truncates |
+| `uptime` | hourly | — (uses each repo's GitHub Website field); optionally `UPTIME_ACCESS_HOSTS` plus the `UPTIME_ACCESS_CLIENT_ID` / `UPTIME_ACCESS_CLIENT_SECRET` secrets for sites behind Cloudflare Access | `site.up`, `site.response_ms` — capped at 25 sites per run, and says so on `/health` when it truncates. A site behind Access reports "not checked" rather than "up" unless its host is listed and a service token is set |
 | `anthropic_usage` | daily | `ANTHROPIC_ADMIN_KEY` | token spend and usage |
 | `claude_code` | daily | `ANTHROPIC_ADMIN_KEY` | sessions, lines added, commits |
 | `openai_costs` | daily | `OPENAI_ADMIN_KEY` | organization costs |
