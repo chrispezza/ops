@@ -59,15 +59,15 @@ export async function runPollers(
       await insertSignals(env.DB, poller.id, result.signals);
       // Archived entities are frozen, not monitored: the poller emits nothing
       // for them on purpose and their last rows stay as the audit record.
-      const retracted = poller.retractUnobserved
-        ? await retractUnobserved(
-            env.DB,
-            poller.id,
-            result.entities.filter((e) => !e.archived).map((e) => e.id),
-            Object.entries(poller.metricSemantics).filter(([, kind]) => kind === "state").map(([metric]) => metric),
-            new Set(result.signals.map((s) => `${s.entityId}|${s.metric}`)),
-          )
-        : 0;
+      const stateMetrics = Object.entries(poller.metricSemantics).filter(([, kind]) => kind === "state").map(([metric]) => metric);
+      const emitted = new Set(result.signals.map((s) => `${s.entityId}|${s.metric}`));
+      // Two ways in, one mechanism: every entity the poller returned (opt-in),
+      // plus any entity it names as no longer covered (ADR-008 amendment).
+      const unobserved = [
+        ...(poller.retractUnobserved ? result.entities.filter((e) => !e.archived).map((e) => e.id) : []),
+        ...(result.retract ?? []),
+      ];
+      const retracted = unobserved.length > 0 ? await retractUnobserved(env.DB, poller.id, unobserved, stateMetrics, emitted) : 0;
       summary = {
         pollerId: poller.id,
         ok: true,

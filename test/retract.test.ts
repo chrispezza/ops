@@ -89,4 +89,24 @@ describe("retraction of unobserved state metrics (ADR-008)", () => {
     expect(summaries.map((s) => s.ok)).toEqual([false, true]);
     expect(await metrics("keep")).toEqual(["ci.status"]);
   });
+
+  it("retracts the entities a poller names, without the poller opting in for the rest (#119)", async () => {
+    // a judge-shaped poller: covers part of its entities per run, so it cannot promise retractUnobserved
+    const partial = (result: () => PollerResult) => fake(result, { retractUnobserved: undefined });
+    const seed = partial(() => ({
+      entities: [],
+      signals: [sig("parked", "ci.status", NOW), sig("parked", "spend.usd", NOW), sig("skipped", "ci.status", NOW)],
+    }));
+    await runPollers(env, "hourly", { pollers: [fake(() => ({ entities: [repo("parked"), repo("skipped")], signals: [] }), { id: "seed-entities", retractUnobserved: undefined }), seed], now: NOW });
+
+    // next run: "parked" is out of scope for good, "skipped" was simply not reached
+    const next = partial(() => ({ entities: [], signals: [], retract: ["repo:a/parked"] }));
+    const [summary] = await runPollers(env, "hourly", { pollers: [next], now: NOW + HOUR });
+
+    expect(summary?.retracted).toBe(1);
+    expect(await metrics("parked")).toEqual(["spend.usd"]); // state pointer gone, interval metric untouched
+    expect(await metrics("skipped")).toEqual(["ci.status"]); // not named, so still current
+    const history = await env.DB.prepare("SELECT COUNT(*) AS n FROM signals WHERE entity_id = 'repo:a/parked' AND metric = 'ci.status'").first<{ n: number }>();
+    expect(history?.n).toBe(1); // ADR-002: the row stays
+  });
 });

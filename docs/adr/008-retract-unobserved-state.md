@@ -4,14 +4,15 @@ description: >-
   When a poller that re-emits its state metrics every run sees an entity and
   emits nothing for a metric, the runner deletes that metric's latest pointer.
   History stays; no reader may treat an old row as current by default.
-lastUpdated: 2026-10-10T00:00:00.000Z
+lastUpdated: 2026-10-11T00:00:00.000Z
 tableOfContents: true
 pagefind: true
 ---
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-10-11: a poller may name entities to retract (see the
+amendment at the end).
 
 ## Context
 
@@ -143,3 +144,27 @@ rule 1 against how they emit.
   [ADR-005](005-signal-latest-pointer.md), [ADR-007](007-d1-row-write-budget.md).
 - `src/core/store.ts`, `src/core/runner.ts`, `src/core/derive.ts`,
   `src/pollers/types.ts`.
+
+## Amendment: a poller may name entities to retract (2026-10-11)
+
+Rule 1 made retraction a promise about every entity a poller returns, which
+the judge cannot make: it covers part of its repos per run, so "emitted
+nothing" usually means "not reached tonight". When the `shelved` topic (#90)
+took four repos out of the judge's scope for good, their `judge.*` pointers
+had no way to go and stayed on `/findings` (#119).
+
+What changed: `PollerResult.retract` is an optional list of entity ids the
+poller has deliberately stopped covering. The runner passes them through the
+same `retractUnobserved` in `src/core/store.ts`, so the rule is unchanged: only
+`state` metrics, only rows this poller's source wrote, history untouched, the
+count on the run summary. A poller can use it without setting
+`retractUnobserved`.
+
+What did not change: opting in with `retractUnobserved` still means every
+returned entity; nothing is retracted on a failed run; and a poller must not
+name an entity it merely failed to reach. Naming is for "out of scope", not
+for "no data this time".
+
+Validation: `test/retract.test.ts` (named entities lose their pointers on a
+poller that has not opted in; unnamed ones keep theirs) and
+`test/judge.test.ts` (a shelved repo is not read, not judged, and is named).

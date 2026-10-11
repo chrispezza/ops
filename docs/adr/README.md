@@ -15,7 +15,7 @@ struck through with a pointer, and a change of rule is a dated
 | [005](005-signal-latest-pointer.md) | `signal_latest` is a pointer table maintained in the write path, so current-state reads stop scaling with history. | Accepted; amended 2026-10-10 (retraction) |
 | [006](006-advisory-judge-signals.md) | `judge.*` signals are advisory model output pinned at severity 0 and graded against a reference chain. | Accepted; amended 2026-09-18 ×3, noted 2026-09-23, amended 2026-10-11 |
 | [007](007-d1-row-write-budget.md) | What a signal costs in D1 row writes, and why the account moved to Workers Paid rather than trade history or indexes. | Accepted |
-| [008](008-retract-unobserved-state.md) | A `state` metric that an opted-in poller stops emitting loses its latest pointer; history stays, and no reader shows the old row as current. | Accepted |
+| [008](008-retract-unobserved-state.md) | A `state` metric that an opted-in poller stops emitting loses its latest pointer; history stays, and no reader shows the old row as current. | Accepted; amended 2026-10-11 |
 
 ## Writing one
 
