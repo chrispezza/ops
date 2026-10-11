@@ -190,9 +190,10 @@ maintainer, not by agents: the judge's calibration (ADR-006) reads them as
 human ground truth.
 
 A repo with the `shelved` topic is parked on purpose: it moves to a collapsed
-"Shelved" group on the map and keeps only its Dependabot signal. CI, issues,
-PRs, velocity and hygiene stop being findings, so agents resolving ops findings
-stop spending Actions minutes on it. Remove the topic and it returns on the
+"Shelved" group on the map and keeps only its Dependabot signal, which raises
+a finding for critical advisories only (the count of the rest is still shown).
+CI, issues, PRs, velocity and hygiene stop being findings, so agents resolving
+ops findings stop spending Actions minutes on it. Remove the topic and it returns on the
 next poll. Archiving on GitHub is the heavier alternative (read-only).
 
 GitHub fine-grained PATs are scoped to a single resource owner. With multiple

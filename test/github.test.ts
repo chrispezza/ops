@@ -368,6 +368,34 @@ describe("github poller", () => {
     expect(entity?.category).toBe("web_app");
   });
 
+  it("raises only critical advisories on a shelved repo, keeping the count and saying why", async () => {
+    const alerts = (...grades: string[]) => ({ totalCount: grades.length, nodes: grades.map((severity) => ({ securityVulnerability: { severity } })) });
+    const parked = (name: string, vulnerabilityAlerts: unknown) =>
+      repoNode({ nameWithOwner: `clownware/${name}`, repositoryTopics: { nodes: [{ topic: { name: "shelved" } }] }, vulnerabilityAlerts });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        gqlResponse([
+          parked("routine", alerts("HIGH", "MODERATE", "MODERATE", "LOW", "MODERATE")),
+          parked("urgent", alerts("CRITICAL", "HIGH")),
+          parked("ungraded", { totalCount: 3 }), // grading unavailable
+          parked("clean", { totalCount: 0 }),
+          // the same alerts on a live repo still flag as before
+          repoNode({ nameWithOwner: "clownware/live", vulnerabilityAlerts: alerts("HIGH", "MODERATE") }),
+        ]),
+      ),
+    );
+    const result = await github.poll(testEnv, { listEntities: async () => [] });
+    const vuln = (name: string) => result.signals.find((s) => s.entityId === `repo:clownware/${name}` && s.metric === "deps.vuln_count");
+
+    expect(vuln("routine")).toMatchObject({ valueNum: 5, severity: 0, valueText: "1 high · 4 moderate/low · shelved: only critical raises" });
+    expect(vuln("urgent")).toMatchObject({ valueNum: 2, severity: 3, valueText: "1 critical · 1 high · shelved: only critical raises" });
+    expect(vuln("ungraded")).toMatchObject({ valueNum: 3, severity: 1, valueText: "ungraded · shelved: only critical raises" });
+    expect(vuln("clean")).toMatchObject({ valueNum: 0, severity: 0 });
+    expect(vuln("clean")?.valueText).toBeUndefined();
+    expect(vuln("live")).toMatchObject({ valueNum: 2, severity: 2, valueText: "1 high · 1 moderate/low" });
+  });
+
   it("emits PR cards and weekly velocity, saying so when the velocity page is full", async () => {
     const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
     vi.stubGlobal(

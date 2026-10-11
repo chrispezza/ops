@@ -45,7 +45,7 @@ disappears from every current view and stays in history (ADR-008).
 | `ci.duration_ms` | state | wall time of the latest default-branch workflow run (GitHub-managed `dynamic` runs such as Dependabot Updates excluded) | 0 | run id |
 | `ci.fail_streak` | state | consecutive failed runs on the default branch, GitHub-managed `dynamic` runs excluded. A repo whose CI runs on PRs only has no such runs: it reports 1 while `ci.status` is failing, else 0 | 2 at ≥ 3 (chronic); the current break is already 3 via `ci.status` | hour |
 | `deploy.drift` | state | this deployment's own repo only (`SELF_REPO`): 1 when the running Worker (`DEPLOYED_SHA`, stamped by the deploy) is not the default branch HEAD, else 0; text names both commits. Not emitted when `DEPLOYED_SHA` is empty | 2 once HEAD has been undeployed for over an hour, else 0 | HEAD oid + deployed sha + overdue flag |
-| `deps.vuln_count` | state | open Dependabot alerts; text breaks down critical / high / moderate-low | 3 if any critical, 2 if any high or grading unavailable, 1 otherwise, 0 at none | hour |
+| `deps.vuln_count` | state | open Dependabot alerts; text breaks down critical / high / moderate-low | 3 if any critical, 2 if any high or grading unavailable, 1 otherwise, 0 at none. On a `shelved` repo: 3 if any critical, 1 if ungraded, otherwise 0, with the count and breakdown still stored and the text saying why | hour |
 | `issues.open` | state | open issue count | 1 at ≥ 10 (backlog pressure) | hour |
 | `issues.new_7d` | state | issues opened in the last 7 days | 0 | hour |
 | `issues.idle_90d` | state | open issues not updated for 90 days | 2 at ≥ 5, 1 at ≥ 1 | hour |

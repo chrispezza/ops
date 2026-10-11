@@ -12,6 +12,15 @@ import type { EntityRow, SignalRow } from "./queries";
 // that a fixed repo stops being reported the same morning.
 const STALE_AFTER = 3 * 3600;
 
+// metadata.shelved is set by the github poller from the repo's topic (#90).
+function isShelved(entity: EntityRow): boolean {
+  try {
+    return (JSON.parse(entity.metadata ?? "{}") as { shelved?: boolean }).shelved === true;
+  } catch {
+    return false;
+  }
+}
+
 export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: number): string | null {
   if (entity.kind === "worker") return buildWorkerPrompt(entity, latest, now);
   if (entity.kind !== "repo") return null;
@@ -90,9 +99,17 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
     findings.push(`- ${streak?.value_num} consecutive CI failures${chronic}`);
   }
   const vulns = by("deps.vuln_count");
-  if ((vulns?.value_num ?? 0) > 0) {
-    findings.push(`- ${vulns?.value_num} open Dependabot vulnerability alert(s)${link(vulns)}`);
-    done.push("- zero open Dependabot alerts (ops signal: deps.vuln_count = 0); dismissals need a stated reason");
+  // Severity, not the count: a shelved repo stores its alert count but raises
+  // only critical advisories, and a count that is not a finding must not
+  // become a task. For every other repo any open alert has severity >= 1.
+  if (vulns && (vulns.value_num ?? 0) > 0 && vulns.severity > 0) {
+    if (isShelved(entity)) {
+      findings.push(`- critical Dependabot advisory on a shelved repo (${vulns.value_text ?? `${vulns.value_num} open`})${link(vulns)}`);
+      done.push("- no critical Dependabot alerts left; this repo is shelved, so leave the non-critical ones (ops signal: deps.vuln_count severity 0)");
+    } else {
+      findings.push(`- ${vulns.value_num} open Dependabot vulnerability alert(s)${link(vulns)}`);
+      done.push("- zero open Dependabot alerts (ops signal: deps.vuln_count = 0); dismissals need a stated reason");
+    }
   }
   // Human and Dependabot PRs are separate findings: the bot's PRs are a
   // chore with a fixed recipe, a person's PR waiting is a relationship.

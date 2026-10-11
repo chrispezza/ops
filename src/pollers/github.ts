@@ -467,8 +467,14 @@ export const github: Poller = {
           else grades.other++;
         }
         const graded = grades.critical + grades.high + grades.other > 0;
+        // A shelved repo raises only critical advisories: anything less would
+        // keep prompting the routine fix-the-alerts work that shelving exists to
+        // stop. The count and breakdown are still stored, so nothing is hidden.
+        // Ungraded alerts stay visible at the calmest level, since "no critical"
+        // cannot be claimed for alerts nobody graded.
         const vulnSeverity =
           vulns === 0 ? 0
+          : shelved ? (grades.critical > 0 ? 3 : !graded ? 1 : 0)
           : !graded ? 2 // grading unavailable (token scope, >100 alerts page) — keep the old conservative middle
           : grades.critical > 0 ? 3
           : grades.high > 0 ? 2
@@ -482,13 +488,14 @@ export const github: Poller = {
           entityId: id,
           metric: "deps.vuln_count",
           valueNum: vulns,
-          valueText: breakdown || undefined,
+          // the why travels with the number: a shelved repo's quiet 5 must not read as a clean 5
+          valueText: shelved && vulns > 0 ? `${breakdown || "ungraded"} · shelved: only critical raises` : breakdown || undefined,
           severity: vulnSeverity as 0 | 1 | 2 | 3,
           url: `${repo.url}/security/dependabot`,
           observedAt: now,
           dedupeKey: hourBucket,
         });
-        // Shelved (#90): security stays visible, nothing else prompts work.
+        // Shelved (#90): security stays visible (critical only), nothing else prompts work.
         if (shelved) continue;
 
         signals.push({

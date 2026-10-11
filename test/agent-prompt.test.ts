@@ -247,4 +247,21 @@ describe("expanded finding coverage (issue #24)", () => {
     expect(prompt).toContain("lhci.performance arrive via POST /ingest");
     expect(prompt).not.toContain("ci.status, lhci.performance arrive via POST /ingest");
   });
+
+  describe("a shelved repo's Dependabot alerts", () => {
+    const parked: EntityRow = { ...repo, metadata: JSON.stringify({ shelved: true }) };
+
+    it("are not turned into a task when none is critical", () => {
+      // the count is stored (5) but the poller raises nothing: severity 0
+      const prompt = buildAgentPrompt(parked, [sig("deps.vuln_count", 5, 0, "1 high · 4 moderate/low · shelved: only critical raises")], NOW);
+      expect(prompt ?? "").not.toContain("Dependabot");
+    });
+
+    it("ask for the critical one only, and say to leave the rest", () => {
+      const prompt = buildAgentPrompt(parked, [sig("deps.vuln_count", 2, 3, "1 critical · 1 high · shelved: only critical raises", "https://github.com/x/y/security/dependabot")], NOW);
+      expect(prompt).toContain("critical Dependabot advisory on a shelved repo (1 critical · 1 high");
+      expect(prompt).toContain("no critical Dependabot alerts left; this repo is shelved, so leave the non-critical ones");
+      expect(prompt).not.toContain("zero open Dependabot alerts");
+    });
+  });
 });
