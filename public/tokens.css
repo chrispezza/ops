@@ -755,7 +755,8 @@ li.card[data-sev="4"] { border-left-color: hsl(var(--sev-4)); }
 .card-title { color: hsl(var(--fg-body)); overflow-wrap: anywhere; }
 .card-title a { color: inherit; text-decoration: underline; text-decoration-color: hsl(var(--border-strong)); text-underline-offset: 2px; }
 .card-title a:hover { text-decoration-color: currentColor; }
-.card-detail { font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-mono); color: hsl(var(--fg-muted)); margin-top: 2px; }
+/* a detail can carry a URL from a pushed signal; unbroken, it ran out of the card and under the next column (#79) */
+.card-detail { font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-mono); color: hsl(var(--fg-muted)); margin-top: 2px; overflow-wrap: anywhere; }
 svg.agebar { display: block; margin-top: var(--space-1); max-width: 100%; }
 svg.agebar .agebar-track { fill: hsl(var(--bg-sunken)); }
 svg.agebar .agebar-fill { fill: hsl(var(--fg-muted)); }
