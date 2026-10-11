@@ -111,18 +111,24 @@ Entity: `vendor_api:x`.
 
 Entity: `account:{owner}` per entry of `GITHUB_OWNERS`, category `vendor_api`.
 One request per owner per poll, from the billing usage report. An org is read
-from `/organizations/{owner}/settings/billing/usage` (needs `read:org`), a
-personal account from `/users/{owner}/settings/billing/usage` (needs a classic
-token with the `user` scope; GitHub answers 404 without it). An owner it cannot
+from `/organizations/{owner}/settings/billing/usage`, a personal account from
+`/users/{owner}/settings/billing/usage`. GitHub answers 404 to a classic token
+that lacks the scope. An owner it cannot
 read is a `notes` line, and its stale value is retracted
 ([ADR-008](adr/008-retract-unobserved-state.md)).
 
 The token is looked up as `GITHUB_BILLING_PAT_<OWNER>`, then
 `GITHUB_BILLING_PAT`, then the repo token (`GITHUB_PAT_<OWNER>` /
 `GITHUB_PAT`). Billing has its own secrets because the report needs scopes the
-repo-reading tokens should not carry, and a fine-grained token answers 403:
-use a classic token with `read:org` whose owner is an organization admin, or
-with `user` for a personal account.
+repo-reading tokens should not carry, and a fine-grained token answers 403.
+
+Scopes, from GitHub's `X-Accepted-OAuth-Scopes` response header (measured
+2026-10-11): the personal report accepts classic `user`; the organization
+report accepts `admin:org` or `repo`, and `read:org` is **not** enough. Both
+org scopes can write, which is at odds with the rule that upstream credentials
+are read-only, so an organization is only covered if its owner accepts that
+trade. Whether a fine-grained token can be granted the org report is not
+established.
 
 | Metric | Semantics | Value | Severity | Dedupe |
 |---|---|---|---|---|

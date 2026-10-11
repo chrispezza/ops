@@ -99,7 +99,7 @@ describe("actions_minutes poller (#91)", () => {
     const result = await actionsMinutes.poll({ ...testEnv, GITHUB_OWNERS: "chrispezza" } as unknown as Env, ctx([]));
     expect(result.signals).toEqual([]);
     expect(result.entities.map((e) => e.id)).toEqual(["account:chrispezza"]);
-    expect(result.notes?.[0]).toContain("chrispezza billing usage unavailable (HTTP 404; a personal account needs a classic token with the user scope)");
+    expect(result.notes?.[0]).toContain("chrispezza billing usage unavailable (HTTP 404, which GitHub also answers when the token lacks the scope)");
   });
 
   it("reads a personal account from the user endpoint when it is not an org", async () => {
@@ -140,7 +140,7 @@ describe("actions_minutes poller (#91)", () => {
       stubUsage({ org: 403 });
       const result = await actionsMinutes.poll({ ...testEnv, GITHUB_OWNERS: "my-org" } as unknown as Env, ctx([]));
       expect(result.signals).toEqual([]);
-      expect(result.notes?.[0]).toContain("my-org billing usage unavailable (HTTP 403); set GITHUB_BILLING_PAT_MY_ORG");
+      expect(result.notes?.[0]).toContain("my-org billing usage unavailable (HTTP 403); set GITHUB_BILLING_PAT_MY_ORG: a personal account needs classic scope user; an org needs admin:org or repo");
     });
   });
 
