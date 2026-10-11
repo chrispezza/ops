@@ -14,7 +14,9 @@ const topicsFor = (category: string): string => {
 const SECTIONS: { category: string; title: string; topics: string }[] = [
   { category: "static_site", title: "Static Sites" },
   { category: "web_app", title: "Web Apps" },
-  { category: "plugin_skill", title: "Plugins · MCPs · Skills" },
+  { category: "mobile_app", title: "Mobile Apps" },
+  { category: "extension", title: "Plugins · Extensions" },
+  { category: "plugin_skill", title: "MCPs · Skills" },
   { category: "tooling", title: "Tools · Templates · Experiments" },
   { category: "client_project", title: "Client Projects" },
 ].map((s) => ({ ...s, topics: topicsFor(s.category) }));
@@ -354,6 +356,8 @@ function Chips(props: { row: TriageRow; now: number; stale: ReadonlySet<string> 
         </>
       );
     case "web_app":
+    case "mobile_app":
+    case "extension":
       return (
         <>
           {site}

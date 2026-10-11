@@ -17,6 +17,10 @@ export const EXPECTED_METRICS: Record<string, string[]> = {
   // deliberate subset. Demanding evals everywhere is exactly the phantom-finding
   // trap above; they land as opt-in signals when a skill actually has one.
   plugin_skill: ["audit.finding_count"],
+  // Extensions and plugins (browser, Obsidian, Claude Code) ship code like an
+  // app but have no site to monitor and no skill-audit to demand.
+  extension: ["ci.status", "deps.vuln_count"],
+  mobile_app: ["ci.status", "deps.vuln_count"],
   tooling: [], // templates/libs/experiments — categorized, but nothing is demanded of them
   client_project: [], // mixed shapes; per-repo expectations don't generalize
 };
@@ -30,16 +34,24 @@ export const POLLER_SOURCED_METRICS: Record<string, string> = {
   "deps.vuln_count": "enable Dependabot alerts on the repo",
 };
 
+// Category filter order shared by the map, triage, board and findings selects.
+export const CATEGORIES = ["static_site", "web_app", "mobile_app", "extension", "plugin_skill", "tooling", "client_project", "vendor_api"] as const;
+
 // Spec §2.4: classification lives in the system of record — GitHub topics.
 // The github poller reads it and the map's empty-state hints name the topics
 // from it, so a topic added here is both accepted and taught.
 export const TOPIC_CATEGORY: Record<string, string> = {
   "static-site": "static_site",
   "web-app": "web_app",
+  "mobile-app": "mobile_app",
   mcp: "plugin_skill",
   skill: "plugin_skill",
-  "claude-plugin": "plugin_skill",
-  "claude-code-plugin": "plugin_skill",
+  // Extensions and plugins are one bucket whatever the host app is.
+  extension: "extension",
+  "browser-extension": "extension",
+  "obsidian-plugin": "extension",
+  "claude-plugin": "extension",
+  "claude-code-plugin": "extension",
   tool: "tooling",
   template: "tooling",
   client: "client_project",
