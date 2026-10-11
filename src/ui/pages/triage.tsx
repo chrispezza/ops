@@ -1,4 +1,4 @@
-import { labelForMetric } from "../../config";
+import { CATEGORIES, labelForMetric } from "../../config";
 import type { EntityView } from "../../core/queries";
 import { activityAt, type Score } from "../../core/score";
 import { Chip, Dot, ExtLink, newIssueUrl, safeHref, ScoreBar, SortTh } from "../components";
@@ -64,7 +64,7 @@ export function TriagePage(props: {
         </select>
         <select name="category" aria-label="category">
           <option value="">all categories</option>
-          {["static_site", "web_app", "plugin_skill", "tooling", "client_project", "vendor_api"].map((c) => (
+          {CATEGORIES.map((c) => (
             <option value={c} selected={props.filters.category === c}>
               {c}
             </option>

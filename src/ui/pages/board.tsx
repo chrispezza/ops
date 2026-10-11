@@ -1,3 +1,4 @@
+import { CATEGORIES } from "../../config";
 import { type BoardCard, type BoardColumn, PR_AGE_BAR_MAX_DAYS } from "../../core/board";
 import { Dot, formatSignalValue, safeHref } from "../components";
 
@@ -27,7 +28,7 @@ export function BoardPage(props: { columns: BoardColumn[]; filters: BoardFilters
         </select>
         <select name="category" aria-label="category">
           <option value="">all categories</option>
-          {["static_site", "web_app", "plugin_skill", "tooling", "client_project", "vendor_api"].map((c) => (
+          {CATEGORIES.map((c) => (
             <option value={c} selected={f.category === c}>
               {c}
             </option>

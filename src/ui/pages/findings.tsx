@@ -1,4 +1,4 @@
-import { labelForMetric, SEVERITY_NAMES } from "../../config";
+import { CATEGORIES, labelForMetric, SEVERITY_NAMES } from "../../config";
 import { domainLabel, type Heatmap } from "../../core/heatmap";
 import type { FindingRow } from "../../core/queries";
 import { Dot, ExtLink, formatSignalValue, SortTh, timeAgo } from "../components";
@@ -61,7 +61,7 @@ export function FindingsPage(props: {
         </select>
         <select name="category" aria-label="category">
           <option value="">all categories</option>
-          {["static_site", "web_app", "plugin_skill", "tooling", "client_project", "vendor_api"].map((c) => (
+          {CATEGORIES.map((c) => (
             <option value={c} selected={f.category === c}>
               {c}
             </option>
