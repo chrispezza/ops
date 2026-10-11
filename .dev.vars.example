@@ -39,3 +39,8 @@ NTFY_TOKEN=
 # sits behind Access.
 UPTIME_ACCESS_CLIENT_ID=
 UPTIME_ACCESS_CLIENT_SECRET=
+
+# wrangler.jsonc turns the Access assertion check on for the deployment. Blank
+# both here or every local request answers "access denied: no assertion".
+ACCESS_TEAM_DOMAIN=
+ACCESS_AUD=

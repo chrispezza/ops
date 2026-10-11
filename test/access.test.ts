@@ -1,5 +1,7 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { verifyAccessJwt } from "../src/core/access";
+import worker from "../src/index";
 
 // Signs with a real RSA key and verifies through WebCrypto — mocking the
 // signature check would leave the part most worth testing untested.
@@ -104,5 +106,57 @@ describe("Access assertion verification", () => {
     });
     const res = await verifyAccessJwt(await sign(validClaims()), "unreachable-team", AUD);
     expect(res).toEqual({ ok: false, reason: "jwks unavailable" });
+  });
+});
+
+// The check as the deployment runs it (#111): the tests' own env blanks
+// ACCESS_* (vitest.config.ts), so the configured Worker is driven directly.
+describe("Access assertion check on the routes", () => {
+  const configured = { ...env, ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD } as unknown as Env;
+  const call = async (path: string, init?: RequestInit) => {
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(new Request(`https://ops.local${path}`, init), configured, ctx);
+    await waitOnExecutionContext(ctx);
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (String(url).includes("/cdn-cgi/access/certs")) return new Response(JSON.stringify(jwks));
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+  });
+
+  it("refuses the dashboard without an assertion, which is what workers.dev would otherwise serve", async () => {
+    const res = await call("/");
+    expect(res.status).toBe(403);
+    expect(await res.text()).toBe("access denied: no assertion");
+  });
+
+  it("serves it with a valid assertion in the header or the cookie", async () => {
+    const jwt = await sign(validClaims());
+    expect((await call("/", { headers: { "cf-access-jwt-assertion": jwt } })).status).toBe(200);
+    expect((await call("/", { headers: { cookie: `CF_Authorization=${jwt}` } })).status).toBe(200);
+  });
+
+  it("refuses an assertion issued for another application, such as the preview-URL app", async () => {
+    const preview = await sign(validClaims({ aud: ["d".repeat(64)] }));
+    const res = await call("/", { headers: { "cf-access-jwt-assertion": preview } });
+    expect(res.status).toBe(403);
+    expect(await res.text()).toBe("access denied: aud mismatch");
+  });
+
+  it("leaves the two machine routes to their own bearer tokens", async () => {
+    // no assertion on either: they arrive through an Access bypass policy
+    expect((await call("/ingest", { method: "POST", body: "{}" })).status).toBe(401);
+    expect((await call("/digest/md")).status).toBe(401);
+    const ok = await call("/digest/md", { headers: { authorization: `Bearer ${env.DIGEST_TOKEN}` } });
+    expect(ok.status).toBe(200);
+  });
+
+  it("exempts those two paths exactly, not their neighbours", async () => {
+    for (const path of ["/ingest/extra", "/digest", "/digest/md/extra", "/health"]) {
+      expect((await call(path)).status, path).toBe(403);
+    }
   });
 });
