@@ -116,6 +116,34 @@ describe("actions_minutes poller (#91)", () => {
     expect(result.notes?.[0]).toContain("larger-runner minutes (Actions Linux 4-core)");
   });
 
+  describe("billing token (kept apart from the repo-reading token)", () => {
+    // placeholder token names, not real credentials
+    const sent = () =>
+      (fetch as unknown as { mock: { calls: [unknown, RequestInit | undefined][] } }).mock.calls.map((c) => new Headers(c[1]?.headers).get("authorization"));
+    const withBilling = (extra: Record<string, string>) => ({ ...testEnv, ...extra }) as unknown as Env;
+
+    it("prefers the per-owner billing token, then the shared one, then the repo token", async () => {
+      stubUsage({ org: [item("web", 10)] });
+      await actionsMinutes.poll(withBilling({ GITHUB_BILLING_PAT_CLOWNWARE: "owner-billing", GITHUB_BILLING_PAT: "shared-billing" }), ctx([]));
+      expect(sent()).toEqual(["Bearer owner-billing"]);
+
+      stubUsage({ org: [item("web", 10)] });
+      await actionsMinutes.poll(withBilling({ GITHUB_BILLING_PAT: "shared-billing" }), ctx([]));
+      expect(sent()).toEqual(["Bearer shared-billing"]);
+
+      stubUsage({ org: [item("web", 10)] });
+      await actionsMinutes.poll(testEnv, ctx([]));
+      expect(sent()).toEqual(["Bearer test-pat"]);
+    });
+
+    it("names the secret to set when the report is refused", async () => {
+      stubUsage({ org: 403 });
+      const result = await actionsMinutes.poll({ ...testEnv, GITHUB_OWNERS: "my-org" } as unknown as Env, ctx([]));
+      expect(result.signals).toEqual([]);
+      expect(result.notes?.[0]).toContain("my-org billing usage unavailable (HTTP 403); set GITHUB_BILLING_PAT_MY_ORG");
+    });
+  });
+
   it("reports unconfigured calmly with no owners", async () => {
     await expect(actionsMinutes.poll({ ...testEnv, GITHUB_OWNERS: "" } as unknown as Env, ctx([]))).rejects.toThrow(/^unconfigured:/);
   });

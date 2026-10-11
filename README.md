@@ -104,7 +104,7 @@ as separate truth.
 | `claude_code` | daily | `ANTHROPIC_ADMIN_KEY` | sessions, lines added, commits |
 | `openai_costs` | daily | `OPENAI_ADMIN_KEY` | organization costs |
 | `x_usage` | daily | `X_BEARER_TOKEN` | monthly post cap usage |
-| `actions_minutes` | hourly | `GITHUB_OWNERS`, `GITHUB_PAT` (`read:org` for an org; a personal account needs a classic token with `user`) | `actions.minutes`: private-repo Actions minutes this month against `ACTIONS_MINUTES_PER_MONTH`, with pace and the top repo |
+| `actions_minutes` | hourly | `GITHUB_OWNERS`, `GITHUB_BILLING_PAT_<OWNER>` (a classic token: `read:org` as an org admin, or `user` for a personal account) | `actions.minutes`: private-repo Actions minutes this month against `ACTIONS_MINUTES_PER_MONTH`, with pace and the top repo |
 | `cloudflare` | daily | `CLOUDFLARE_API_TOKEN`, `CF_ACCOUNT_ID` | Worker requests, errors and error rate; D1 size, rows read and written, and how much of the daily row allowance each has used (`d1.read_cap_pct`, `d1.write_cap_pct` — [ADR-007](docs/adr/007-d1-row-write-budget.md)) |
 | `manifests` | daily | `MARKETPLACE_REPO`, `GITHUB_PAT` | Claude Code plugin/skill inventory |
 | `judge` | daily | `TYPESAFE_API_KEY`, `GITHUB_PAT` | advisory issue tiering — `judge.issue_tier`, `judge.tier_agreement`, `judge.tier_agreement_human`, `judge.reference_agreement` |
@@ -169,6 +169,7 @@ Split by sensitivity. **Vars** are non-secret deployment config and live in
 |---|---|
 | `GITHUB_PAT` | the `github`, `manifests` and `judge` pollers |
 | `GITHUB_PAT_<OWNER>` | per-owner override — see below |
+| `GITHUB_BILLING_PAT_<OWNER>`, `GITHUB_BILLING_PAT` | `actions_minutes`: a classic token that can read the billing usage report (`read:org` as an org admin, or `user` for a personal account). Kept apart so the repo-reading tokens stay narrow; falls back to `GITHUB_PAT` when unset |
 | `ANTHROPIC_ADMIN_KEY` | `anthropic_usage`, `claude_code` |
 | `OPENAI_ADMIN_KEY` | `openai_costs` |
 | `X_BEARER_TOKEN` | `x_usage` |

@@ -17,6 +17,9 @@ interface Env {
   // hosts in UPTIME_ACCESS_HOSTS (#111).
   UPTIME_ACCESS_CLIENT_ID?: string;
   UPTIME_ACCESS_CLIENT_SECRET?: string;
+  // Billing-usage token for the actions_minutes poller; per-owner overrides are
+  // GITHUB_BILLING_PAT_<OWNER>, read by name like GITHUB_PAT_<OWNER>.
+  GITHUB_BILLING_PAT?: string;
 }
 
 declare namespace Cloudflare {
@@ -33,5 +36,6 @@ declare namespace Cloudflare {
     TYPESAFE_API_KEY?: string;
     UPTIME_ACCESS_CLIENT_ID?: string;
     UPTIME_ACCESS_CLIENT_SECRET?: string;
+    GITHUB_BILLING_PAT?: string;
   }
 }
