@@ -34,6 +34,13 @@ export const LABEL_SEVERITY: Record<string, 0 | 1 | 2 | 3> = {
 // idle count is exact up to the cap; PRs oldest-first for the same reason.
 const ISSUE_PAGE = 30;
 const PR_PAGE = 20;
+// Severity-labelled open issues come from their own label-filtered connection,
+// because the idlest-first page above drops a freshly updated P0 on any repo
+// past ISSUE_PAGE open issues (#80). GitHub's `labels` filter is an OR and
+// matches case-insensitively (checked against the live API), so one list of
+// the graded label names is exact.
+const LABELED_PAGE = 20;
+const GRADED_LABELS = JSON.stringify(Object.keys(LABEL_SEVERITY).filter((l) => (LABEL_SEVERITY[l] ?? 0) > 0));
 // Velocity reads the most recently updated closed issues and merged PRs and
 // counts the ones inside the trailing week. A repo that closed more than a
 // page in a week is reported in notes as "at least".
@@ -70,6 +77,10 @@ const QUERY = /* GraphQL */ `
           primaryLanguage { name }
           repositoryTopics(first: 20) { nodes { topic { name } } }
           issues(states: OPEN, first: ${ISSUE_PAGE}, orderBy: { field: UPDATED_AT, direction: ASC }) {
+            totalCount
+            nodes { number title createdAt updatedAt labels(first: 10) { nodes { name } } }
+          }
+          labeledIssues: issues(states: OPEN, first: ${LABELED_PAGE}, labels: ${GRADED_LABELS}, orderBy: { field: UPDATED_AT, direction: ASC }) {
             totalCount
             nodes { number title createdAt updatedAt labels(first: 10) { nodes { name } } }
           }
@@ -169,6 +180,8 @@ interface RepoNode {
   primaryLanguage: { name: string } | null;
   repositoryTopics: { nodes: { topic: { name: string } }[] };
   issues: { totalCount: number; nodes?: IssueNode[] };
+  // Severity-labelled open issues, queried apart from the idlest-first page (#80).
+  labeledIssues?: { totalCount: number; nodes?: IssueNode[] };
   closedIssues?: { nodes?: { closedAt: string | null }[] } | null;
   mergedPrs?: { nodes?: { mergedAt: string | null }[] } | null;
   refs?: { totalCount: number } | null;
@@ -503,7 +516,14 @@ export const github: Poller = {
         // Labeled tiering: severity is the worst label on any open issue, the
         // text names the worst few so the finding reads without a click. A p3
         // issue is tiered but not flagged — the maintainer said "none".
-        const flagged = issueNodes
+        // The labelled connection is merged in so a P0 outside the idlest page
+        // still tiers (#80); the page stays the source for the idle metrics.
+        const labeledNodes = repo.labeledIssues?.nodes ?? [];
+        if ((repo.labeledIssues?.totalCount ?? 0) > labeledNodes.length) {
+          notes.push(`${repo.nameWithOwner}: inspected ${labeledNodes.length} of ${repo.labeledIssues?.totalCount} severity-labelled issues`);
+        }
+        const tierable = [...issueNodes, ...labeledNodes.filter((l) => !issueNodes.some((i) => i.number === l.number))];
+        const flagged = tierable
           .map((i) => {
             const labels = (i.labels?.nodes ?? []).map((l) => l.name);
             const graded = labels
@@ -537,7 +557,7 @@ export const github: Poller = {
         // worst first, with the timestamps the columns need. issues.flagged
         // stays the finding (it carries the severity); this row carries the
         // detail and never scores, so it stays off /findings.
-        const issueCards: IssueCard[] = issueNodes
+        const issueCards: IssueCard[] = tierable
           .flatMap((i) => {
             const f = flagged.find((x) => x.number === i.number);
             return f ? [{ n: i.number, t: trimTitle(i.title), l: f.label, s: f.severity, c: epoch(i.createdAt), u: epoch(i.updatedAt) }] : [];
