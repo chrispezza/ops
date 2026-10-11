@@ -1,3 +1,4 @@
+import { POLLER_SOURCED_METRICS } from "../config";
 import type { EntityRow, SignalRow } from "./queries";
 
 // A generated hand-off prompt is the +issue affordance matured: Ops contributes
@@ -56,9 +57,17 @@ export function buildAgentPrompt(entity: EntityRow, latest: SignalRow[], now: nu
   }
   const expected = latest.filter((s) => s.metric.startsWith("hygiene.missing.") && s.severity > 0);
   if (expected.length > 0) {
-    const names = expected.map((s) => s.metric.slice("hygiene.missing.".length)).join(", ");
-    findings.push(`- expected metrics never reported: ${names} — this category of repo should push them from CI`);
-    done.push("- each expected metric arrives via POST /ingest from the repo's CI (see the ops README)");
+    const names = expected.map((s) => s.metric.slice("hygiene.missing.".length));
+    const polled = names.filter((n) => n in POLLER_SOURCED_METRICS);
+    const pushed = names.filter((n) => !(n in POLLER_SOURCED_METRICS));
+    findings.push(`- expected metrics never reported: ${names.join(", ")}`);
+    // Poller-sourced metrics need a repo-side fix, not an ingest call (#86).
+    for (const n of polled) {
+      done.push(`- ${n} appears on the next poll: ${POLLER_SOURCED_METRICS[n]} (no ingest call or token needed)`);
+    }
+    if (pushed.length > 0) {
+      done.push(`- ${pushed.join(", ")} arrive via POST /ingest from the repo's CI (see the ops README)`);
+    }
   }
 
   const ci = current("ci.status");

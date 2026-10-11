@@ -21,6 +21,15 @@ export const EXPECTED_METRICS: Record<string, string[]> = {
   client_project: [], // mixed shapes; per-repo expectations don't generalize
 };
 
+// Expected metrics a poller derives itself, with the repo-side fix that makes
+// the poller see them. Everything not listed here arrives via POST /ingest
+// from the repo's CI. The agent prompt uses this to avoid telling an agent to
+// wire an ingest call and an INGEST_TOKEN for a metric no push can supply (#86).
+export const POLLER_SOURCED_METRICS: Record<string, string> = {
+  "ci.status": "add a CI workflow triggered on push to the default branch (squash-merge commits carry no PR checks)",
+  "deps.vuln_count": "enable Dependabot alerts on the repo",
+};
+
 // Spec §2.4: classification lives in the system of record — GitHub topics.
 // The github poller reads it and the map's empty-state hints name the topics
 // from it, so a topic added here is both accepted and taught.

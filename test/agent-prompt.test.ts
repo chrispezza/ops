@@ -235,4 +235,16 @@ describe("expanded finding coverage (issue #24)", () => {
     expect(prompt).toContain("docs.score = 100");
     expect(prompt).toContain("POST /ingest");
   });
+
+  it("does not send poller-sourced expected metrics through /ingest (#86)", () => {
+    const prompt = buildAgentPrompt(
+      repo,
+      [sig("hygiene.missing.ci.status", null, 1), sig("hygiene.missing.lhci.performance", null, 1)],
+      NOW,
+    );
+    expect(prompt).toContain("expected metrics never reported: ci.status, lhci.performance");
+    expect(prompt).toContain("ci.status appears on the next poll: add a CI workflow triggered on push");
+    expect(prompt).toContain("lhci.performance arrive via POST /ingest");
+    expect(prompt).not.toContain("ci.status, lhci.performance arrive via POST /ingest");
+  });
 });
