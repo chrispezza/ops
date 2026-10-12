@@ -19,8 +19,11 @@ struck through with a pointer, and a change of rule is a dated
 
 ## Writing one
 
-Copy [000-template.md](000-template.md) to the next number and fill every
-section. The bar for a new ADR is a rule someone could break without noticing:
+Copy [000-template.md](000-template.md) to the next number, fill every
+section, and add its row to the table above. `test/adr-doc.test.ts` fails when
+a record has no row, when the row's status disagrees with the record's own
+Status section, or when a link or an `ADR-NNN` citation anywhere in the repo
+names a record that does not exist. The bar for a new ADR is a rule someone could break without noticing:
 a constraint on the schema, the poller contract, the security gates, or what
 Ops is allowed to store. A feature does not need one; a feature that reverses
 a stated non-goal does (see spec §0's revision of "notifications").

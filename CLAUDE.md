@@ -178,7 +178,7 @@ Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 | `src/ui/` | layout, components, one file per page |
 | `migrations/` | D1 schema, numbered and append-only |
 | `public/` | static assets served by Workers Assets; `tokens.css` is the design system |
-| `docs/adr/` | architecture decisions; `README.md` there is the index, `000-template.md` the template |
+| `docs/adr/` | architecture decisions; `README.md` there is the index (kept honest by `test/adr-doc.test.ts`), `000-template.md` the template |
 | `docs/metrics.md` | metric catalogue: semantics, source, severity rule for every metric |
 | `docs/runbook.md` | incident procedures (D1 allowances, subrequest ceiling), migrations, deploys, secret rotation |
 | `SECURITY.md` | security model in brief; vulnerability reporting |
