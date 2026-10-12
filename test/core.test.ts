@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { EXPECTED_METRICS } from "../src/config";
 import { emitHygieneSignals, HYGIENE_RECONCILE_SQL } from "../src/core/derive";
 import { entitiesWithLatest, findings, intervalSums, latestByMetric, latestSignals } from "../src/core/queries";
-import { runPollers } from "../src/core/runner";
+import { contractViolation, runPollers } from "../src/core/runner";
 import { insertSignals, upsertEntities } from "../src/core/store";
 import type { Poller, PollerResult } from "../src/pollers/types";
 import type { D1Migration } from "cloudflare:test";
@@ -11,11 +11,19 @@ import type { D1Migration } from "cloudflare:test";
 const NOW = 1_754_400_000;
 const DAY_S = 86_400;
 
-function fakePoller(id: string, result: PollerResult | (() => PollerResult)): Poller {
+// What the fixtures below emit. The runner refuses a metric its poller does
+// not declare, so a fake poller declares like a real one.
+const FAKE_SEMANTICS: Poller["metricSemantics"] = { "ci.status": "state", "deps.vuln_count": "state", "spend.usd": "interval" };
+
+function fakePoller(
+  id: string,
+  result: PollerResult | (() => PollerResult),
+  metricSemantics: Poller["metricSemantics"] = FAKE_SEMANTICS,
+): Poller {
   return {
     id,
     schedule: "hourly",
-    metricSemantics: {},
+    metricSemantics,
     poll: async () => (typeof result === "function" ? result() : result),
   };
 }
@@ -141,6 +149,33 @@ describe("store + runner round trip: append-only signals (ADR-002)", () => {
     const badStatus = (await latestSignals(env.DB, "poller:bad")).find((s) => s.metric === "poller.status");
     expect(badStatus?.severity).toBe(3);
     expect(badStatus?.value_text).toContain("upstream 500");
+  });
+
+  it("refuses a run that emits a metric the poller does not declare, and stores none of it (Poller contract)", async () => {
+    const summaries = await runPollers(env, "hourly", {
+      pollers: [fakePoller("sloppy", repoResult, { "ci.status": "state" }), fakePoller("good", repoResult)],
+      now: NOW,
+    });
+
+    expect(summaries.map((s) => s.ok)).toEqual([false, true]);
+    expect(summaries[0]?.error).toMatch(/^contract: sloppy emitted metrics missing from its metricSemantics: deps\.vuln_count\./);
+    expect(summaries[0]?.error).toContain("CLAUDE.md, Poller contract");
+    // Visible on /health like any other failure, and the next poller still ran.
+    const status = (await latestSignals(env.DB, "poller:sloppy")).find((s) => s.metric === "poller.status");
+    expect(status?.severity).toBe(3);
+    const stored = await env.DB.prepare("SELECT COUNT(*) AS n FROM signals WHERE source = 'sloppy'").first<{ n: number }>();
+    expect(stored?.n).toBe(0);
+    expect(await latestSignals(env.DB, "repo:clownware/gittunes")).toHaveLength(2);
+  });
+
+  it("refuses a metric name that is not domain.name before asking whether it is declared", () => {
+    const signal = (metric: string) => ({ entityId: "repo:x", metric, observedAt: NOW, dedupeKey: "k" });
+    const poller = fakePoller("p", { entities: [], signals: [] }, { "ci.status": "state", Bad: "state" });
+    expect(contractViolation(poller, [signal("ci.status")])).toBeNull();
+    expect(contractViolation(poller, [])).toBeNull();
+    expect(contractViolation(poller, [signal("Bad")])).toMatch(/^contract: p emitted metric names that are not "domain\.name"/);
+    // A prototype key is not a declaration.
+    expect(contractViolation(poller, [signal("constructor.name")])).toMatch(/missing from its metricSemantics: constructor\.name/);
   });
 
   it("rejects signals with an empty dedupe key", async () => {

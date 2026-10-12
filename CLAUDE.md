@@ -104,7 +104,10 @@ from stored signals on each pass in `src/core/derive.ts` and
   point, so prefer a new metric over a new page.
 - Every metric a poller emits must be listed in `metricSemantics` and
   documented in [docs/metrics.md](docs/metrics.md) with its severity rule;
-  `test/metrics-doc.test.ts` fails when the catalogue falls behind.
+  `test/metrics-doc.test.ts` fails when the catalogue falls behind a
+  declaration, and the runner refuses a run that emits an undeclared or
+  misnamed metric: nothing from that run is stored and `/health` shows a
+  `contract:` failure naming the metric.
 
 Every poller run is itself a signal on a synthetic `poller:{id}` entity.
 
