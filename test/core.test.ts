@@ -61,7 +61,7 @@ const repoResult: PollerResult = {
   ],
 };
 
-describe("store + runner round trip", () => {
+describe("store + runner round trip: append-only signals (ADR-002)", () => {
   it("persists a poller result and derives latest state by query", async () => {
     await runPollers(env, "hourly", { pollers: [fakePoller("fake", repoResult)], now: NOW });
 

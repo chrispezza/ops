@@ -300,7 +300,7 @@ describe("table semantics survive the mobile collapse", () => {
   });
 });
 
-describe("same-origin gate", () => {
+describe("same-origin gate (CLAUDE.md Security invariants)", () => {
   const form = () => {
     const f = new FormData();
     f.set("entity_id", "repo:clownware/gittunes");
@@ -394,7 +394,7 @@ describe("hostile URLs from ingest never become live links", () => {
   });
 });
 
-describe("response hardening", () => {
+describe("response hardening (CLAUDE.md Security invariants)", () => {
   it("sends a CSP that forbids inline script, plus the companion headers", async () => {
     const res = await SELF.fetch("https://ops.local/");
     const csp = res.headers.get("content-security-policy") ?? "";
@@ -405,7 +405,7 @@ describe("response hardening", () => {
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     // same-origin, not no-referrer: no-referrer nulls the Origin header on
     // form POSTs, which the same-origin gate would then refuse (see index.tsx)
-    expect(res.headers.get("referrer-policy")).toBe("same-origin");
+    expect(res.headers.get("referrer-policy"), "keep same-origin: a stricter policy nulled Origin on form POSTs (#36, CLAUDE.md Security invariants)").toBe("same-origin");
   });
 
   it("refuses a cross-origin POST to a mutating route", async () => {

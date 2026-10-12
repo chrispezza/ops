@@ -15,7 +15,7 @@ beforeEach(async () => {
   ]);
 });
 
-describe("signal compaction (issue #4)", () => {
+describe("signal compaction, the one sanctioned deleter (issue #4, ADR-002)", () => {
   it("keeps the newest row per day for old state signals, leaves recent and interval rows alone", async () => {
     await upsertEntities(env.DB, [{ id: "repo:a/x", kind: "repo", name: "x" }], NOW);
 

@@ -122,7 +122,7 @@ describe("/findings", () => {
   });
 });
 
-describe("ingest payload strictness", () => {
+describe("ingest payload strictness (CLAUDE.md Security invariants)", () => {
   it("rejects unrecognized fields instead of silently dropping them", async () => {
     // the real bug: periodStart stored fine, left period_start NULL, and showed
     // up much later as $0.00 on /spend

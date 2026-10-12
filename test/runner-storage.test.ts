@@ -42,7 +42,7 @@ describe("runner when D1 refuses writes (ADR-007)", () => {
   });
 });
 
-describe("POLLERS order (#68)", () => {
+describe("POLLERS order (#68; docs/runbook.md, Subrequest ceiling)", () => {
   it("runs judge last among the daily pollers, so its cost can never starve spend or budget monitoring", async () => {
     const { POLLERS } = await import("../src/pollers");
     const daily = POLLERS.filter((p) => p.schedule === "daily").map((p) => p.id);
