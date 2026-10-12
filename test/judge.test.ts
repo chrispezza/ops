@@ -177,7 +177,10 @@ describe("judge poller", () => {
     expect(tier?.valueText).toContain("#1 p1");
     expect(tier?.valueText).not.toContain("#3");
     // ADR-006 rule 1: the floor is the mechanism, so it is asserted, not assumed.
-    expect(result.signals.every((s) => s.severity === 0)).toBe(true);
+    expect(
+      result.signals.filter((s) => s.severity !== 0).map((s) => s.metric),
+      "ADR-006 rule 1: every judge.* signal is severity 0. Raising one needs a new ADR, not a code change.",
+    ).toEqual([]);
   });
 
   it("asks about one issue per request, with the tiers as choice options", async () => {

@@ -49,7 +49,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("Access assertion verification", () => {
+describe("Access assertion verification (CLAUDE.md Security invariants)", () => {
   it("accepts a correctly signed, correctly scoped assertion", async () => {
     const res = await verifyAccessJwt(await sign(validClaims()), TEAM, AUD);
     expect(res).toEqual({ ok: true, identity: "chris@example.test" });
@@ -111,7 +111,7 @@ describe("Access assertion verification", () => {
 
 // The check as the deployment runs it (#111): the tests' own env blanks
 // ACCESS_* (vitest.config.ts), so the configured Worker is driven directly.
-describe("Access assertion check on the routes", () => {
+describe("Access assertion check on the routes (CLAUDE.md Security invariants: two machine routes, no third)", () => {
   const configured = { ...env, ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD } as unknown as Env;
   const call = async (path: string, init?: RequestInit) => {
     const ctx = createExecutionContext();
