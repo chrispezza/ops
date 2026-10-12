@@ -27,6 +27,27 @@ function makeCtx(db: D1Database): PollerCtx {
   };
 }
 
+// Poller contract (CLAUDE.md, "Poller contract"; src/pollers/types.ts): metric
+// names are `domain.name`, and every metric a poller emits is declared in its
+// metricSemantics. The declaration is what retraction (ADR-008) and the
+// catalogue test (test/metrics-doc.test.ts) read, so an undeclared metric
+// would be stored yet invisible to both. /ingest refuses what it does not
+// recognise; this is the same boundary for pollers. Exported for the tests.
+const METRIC_NAME = /^[a-z0-9_]+\.[a-z0-9_.]+$/;
+
+export function contractViolation(poller: Poller, signals: SignalInsert[]): string | null {
+  const emitted = [...new Set(signals.map((s) => s.metric))];
+  const malformed = emitted.filter((m) => !METRIC_NAME.test(m));
+  if (malformed.length > 0) {
+    return `contract: ${poller.id} emitted metric names that are not "domain.name" (${METRIC_NAME.source}): ${malformed.map((m) => JSON.stringify(m)).join(", ")}. See CLAUDE.md, Poller contract.`;
+  }
+  const undeclared = emitted.filter((m) => !Object.hasOwn(poller.metricSemantics, m));
+  if (undeclared.length > 0) {
+    return `contract: ${poller.id} emitted metrics missing from its metricSemantics: ${undeclared.join(", ")}. Declare each as "state" or "interval" in the poller and document it in docs/metrics.md (CLAUDE.md, Poller contract; ADR-002). Nothing from this run was stored.`;
+  }
+  return null;
+}
+
 export interface RunSummary {
   pollerId: string;
   ok: boolean;
@@ -55,6 +76,8 @@ export async function runPollers(
     let summary: RunSummary;
     try {
       const result = await poller.poll(env, ctx);
+      const violation = contractViolation(poller, result.signals);
+      if (violation) throw new Error(violation);
       await upsertEntities(env.DB, result.entities, now);
       await insertSignals(env.DB, poller.id, result.signals);
       // Archived entities are frozen, not monitored: the poller emits nothing

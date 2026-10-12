@@ -15,6 +15,7 @@ checkout of `main`. Nothing here writes to any upstream system
 |---|---|
 | Pages 500, `/health` unreachable | Worker logs (dashboard → Workers → `ops` → Logs); a D1 error code `7500` means the read allowance is spent — see *D1 read allowance* |
 | `/health` shows a poller red | its error text on that row; `unconfigured:` is not an incident |
+| `/health` shows a poller red with `contract:` | the poller emitted a metric it does not declare in `metricSemantics` (or a name that is not `domain.name`); nothing from that run was stored. Declare and document the metric, or fix the name, and deploy |
 | Freshness chip stale but `/health` green | the write allowance: status rows fail by the same path as data rows — see *D1 write allowance* |
 | Several daily pollers dark, `durationMs: 0` | *Subrequest ceiling* |
 | CI reporters failing on `POST /ingest` | the status code: `400` is their payload, `401` their token, `503` this side (see *Ingest answers 503*) |
