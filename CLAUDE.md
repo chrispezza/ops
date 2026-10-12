@@ -29,12 +29,18 @@ Local seeding: `wrangler d1 migrations apply ops --local`, put
 `INGEST_TOKEN=dev-token` in `.dev.vars`, POST the payload from the README to
 `http://localhost:8787/ingest`. `.dev.vars` is gitignored; never commit it.
 
-D1 bills rows written account-wide against a daily allowance (100k on the free
-tier; [ADR-007](docs/adr/007-d1-row-write-budget.md) has the measured costs).
-A migration that creates an index over `signals` writes one row per existing
-row — 0004 wrote 117,983 and spent 2026-09-18's allowance before 02:00 UTC. A
-PR adding an index or a column to `signals` states that cost, and on the free
-tier the migration is applied right after 00:00 UTC with nothing else that day.
+This deployment has been on Workers Paid since 2026-09-18
+([ADR-007](docs/adr/007-d1-row-write-budget.md) has the measured costs and the
+decision): D1 meters 25B rows read and 50M written per month, and the
+`D1_ROW_READS_PER_DAY` / `D1_ROW_WRITES_PER_DAY` vars in `wrangler.jsonc` are
+those figures divided by 30, the pace the watchers judge against. A fork on the
+free tier has daily account-wide caps instead (5M read, 100k written), and
+there a migration that creates an index over `signals` is an outage: it writes
+one row per existing row. 0004 wrote 117,983 and spent 2026-09-18's allowance
+before 02:00 UTC. So on either plan a PR adding an index or a column to
+`signals` states that cost; on the free tier the migration is applied right
+after 00:00 UTC with nothing else that day, and on Workers Paid outside the
+10:00 UTC cron.
 
 Diagnosing D1 usage: start from `d1AnalyticsAdaptiveGroups` by `date` or
 `datetimeHour` (database-level totals, exact), then reason from code. Do not
@@ -52,7 +58,9 @@ subrequest ceiling), applying a migration, deploying and rotating secrets.
   affordance is a pre-filled new-issue link. Do not add write integrations.
 - **Signals are append-only** ([ADR-002](docs/adr/002-append-only-signals.md)).
   Never UPDATE or DELETE signal rows to change state; current state is derived
-  by query. Each metric is declared `state` (latest wins) or `interval`
+  by query. The one in-place write is the upsert inside `insertSignals`, keyed
+  on `dedupe_key`: re-observing the same key (a settling interval, a
+  fixed-dedupe row such as `poller.last_ok`) overwrites that row. Each metric is declared `state` (latest wins) or `interval`
   (summed over `period`) in the poller's `metricSemantics`. Idempotency comes
   from `UNIQUE(entity_id, metric, dedupe_key)`; `dedupe_key` is NOT NULL on
   purpose. Retention compaction in `src/core/retention.ts` is the one
@@ -60,7 +68,8 @@ subrequest ceiling), applying a migration, deploying and rotating secrets.
   `signal_latest` pointer table ([ADR-005](docs/adr/005-signal-latest-pointer.md)),
   which `insertSignals` maintains in the same batch as the rows — so every
   signal write goes through `insertSignals`; raw `INSERT INTO signals` is out
-  of bounds.
+  of bounds. `test/write-path.test.ts` fails on any other statement that
+  writes either table.
 - **Pollers are a static array** ([ADR-003](docs/adr/003-static-poller-array.md)).
   Add a poller as one file in `src/pollers/` plus one line in
   `src/pollers/index.ts`. No registry, no dynamic import.
